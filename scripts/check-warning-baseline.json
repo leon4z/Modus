@@ -1,0 +1,216 @@
+{
+  "scope": "a11y",
+  "warnings": [
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1701,
+      "col": 3,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1701,
+      "col": 3,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1702,
+      "col": 5,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1702,
+      "col": 5,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1900,
+      "col": 11,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1900,
+      "col": 11,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1901,
+      "col": 13,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1901,
+      "col": 13,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1978,
+      "col": 11,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1978,
+      "col": 11,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1979,
+      "col": 13,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 1979,
+      "col": 13,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 2079,
+      "col": 11,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 2079,
+      "col": 11,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 2080,
+      "col": 13,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/SkillViewer.svelte",
+      "line": 2080,
+      "col": 13,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/RuleEditor.svelte",
+      "line": 82,
+      "col": 3,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/RuleEditor.svelte",
+      "line": 83,
+      "col": 5,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/CopyModal.svelte",
+      "line": 33,
+      "col": 3,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/CopyModal.svelte",
+      "line": 33,
+      "col": 3,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/MigrationModal.svelte",
+      "line": 194,
+      "col": 1,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/MigrationModal.svelte",
+      "line": 194,
+      "col": 1,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/lib/components/MigrationModal.svelte",
+      "line": 195,
+      "col": 3,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/lib/components/MigrationModal.svelte",
+      "line": 195,
+      "col": 3,
+      "message": "`<div>` with a click handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 1451,
+      "col": 5,
+      "message": "`<div>` with a mousedown handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 1483,
+      "col": 5,
+      "message": "`<div>` with a mousedown handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 1513,
+      "col": 5,
+      "message": "`<div>` with a mousedown handler must have an ARIA role\\nhttps://svelte.dev/e/a11y_no_static_element_interactions"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2464,
+      "col": 11,
+      "message": "Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type=\\\"button\\\">` or `<a>` might be more appropriate\\nhttps://svelte.dev/e/a11y_click_events_have_key_events"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2472,
+      "col": 19,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2476,
+      "col": 19,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2480,
+      "col": 19,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2484,
+      "col": 19,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2579,
+      "col": 11,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2583,
+      "col": 11,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    },
+    {
+      "file": "src/routes/+page.svelte",
+      "line": 2600,
+      "col": 11,
+      "message": "A form label must be associated with a control\\nhttps://svelte.dev/e/a11y_label_has_associated_control"
+    }
+  ],
+  "timestamp": "2026-04-16T09:38:20.161Z"
+}

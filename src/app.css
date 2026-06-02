@@ -1,0 +1,1389 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Toolbar / row controls (refresh, tabs, settings actions, etc.) */
+  --control-height: 32px;
+  /* 顶栏/行内搜索旁图标钮高度（与幽灵 refresh、search-input-wrap、L2 工具签一致） */
+  --header-ghost-control-size: 32px;
+  --system-icon-stroke-width: 1.8;
+  /* 页头右侧 icon 组内间距（.header-actions / .settings-header-right） */
+  --header-actions-gap: 2px;
+  --segmented-track-padding: 2px;
+  --segmented-track-radius: 10px;
+  --segmented-item-radius: calc(var(--segmented-track-radius) - var(--segmented-track-padding));
+  /* Primary title band: top-level modules share one measured header height. */
+  --view-header-padding-y-top: 10px;
+  --view-header-padding-y-bottom: 10px;
+  --view-header-band-min-height: calc(
+    var(--view-header-padding-y-top) + var(--header-ghost-control-size) + var(--view-header-padding-y-bottom)
+  );
+  /* L1 标题区分段：跨规则 / Skills / 设置胶囊统一单格最小宽度（图标 + 最长主标签如 zh「自定义」/ en「General」） */
+  --l1-tab-segment-min-width: calc(14px + 6px + 7.5ch + 28px);
+  /* 与 src-tauri/tauri.conf.json minWidth 一致，用于顶栏左右留白几何注释 */
+  --app-window-min-width: 980px;
+  /* .view-fixed-header 左右 20px+20px */
+  --management-header-view-padding-x: 40px;
+  /* 行内搜索展开条（.search-input-wrap min-width:220px + 内边距）+ 同排若干 32px 图标的估值上限，用于理解「最窄主内容下中间区余量」 */
+  --management-header-right-cluster-estimate: 400px;
+  /* 标题右缘与 L1 区左缘：固定 12px */
+  --management-header-title-capsule-gap: 12px;
+  /* L1 区右缘与操作区：与左侧对称，不随 @container 压内距；整体不够时由中间 flex:1 让出，而非默认压窄胶囊三格 */
+  --management-header-capsule-actions-gap: 12px;
+  /* 三格胶囊轨道内容最小宽 ≈ 3×单格最小 + 胶囊壳 padding（.level1-tabs 上下左右 2px） */
+  /* 行内搜索展开时第三列理想下限：220px 搜索条 + gap + 3×32px 图标 + gap */
+  --management-header-right-search-rail-px: 340px;
+  --module-mcp-accent: #4f8f9f;
+  --module-mcp-accent-soft: rgba(79, 143, 159, 0.14);
+  /* Light Mode (Premium) */
+  --bg-app: transparent;
+  --bg-main: #FFFFFF;
+  --bg-panel: rgba(255, 255, 255, 0.72);
+  --bg-card: #FFFFFF;
+  --bg-sidebar: transparent;
+  --bg-sidebar-border: rgba(0, 0, 0, 0.06);
+  --color-text-main: rgba(0, 0, 0, 0.9);
+  --color-text-muted: rgba(0, 0, 0, 0.55);
+  --border-color: rgba(0, 0, 0, 0.08);
+  --border-active: rgba(0, 0, 0, 0.2);
+  --border-modal: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.12);
+  --main-surface-separator: rgba(0, 0, 0, 0.24);
+  --sidebar-label-opacity: 0.48;
+  --sidebar-item-opacity: 0.78;
+  --sidebar-item-hover-opacity: 0.96;
+  --sidebar-item-active-opacity: 1;
+  --sidebar-item-hover: rgba(0, 0, 0, 0.018);
+  --sidebar-item-active: rgba(0, 0, 0, 0.022);
+  --sidebar-item-active-border: transparent;
+  --toolbar-control-bg: #F1F1F1;
+  --toolbar-control-hover: #EAEAEA;
+  --toolbar-control-active: #E3E3E3;
+  --toolbar-control-border: rgba(0, 0, 0, 0.10);
+  --toolbar-control-border-active: rgba(0, 0, 0, 0.18);
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(15, 23, 42, 0.08);
+  --bg-subtle: rgba(0, 0, 0, 0.04);
+  --bg-danger: rgba(248, 113, 113, 0.08);
+  --bg-well: rgba(0, 0, 0, 0.03);
+  --bg-elevated: #FFFFFF;
+  --bg-elevated-subtle: #F3F3F3;
+  --bg-modal: #FFFFFF;
+  --bg-input: #F7F7F7;
+  --scrollbar-thumb: #C7C7C7;
+  --scrollbar-hover: #9A9A9A;
+  --shadow-modal: 0 32px 96px rgba(15, 23, 42, 0.18), 0 12px 32px rgba(15, 23, 42, 0.08);
+  --shadow-floating: 0 20px 56px rgba(15, 23, 42, 0.16), 0 6px 20px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --overlay-bg: rgba(0, 0, 0, 0.14);
+  --overlay-filter: blur(4px) saturate(0);
+  --overlay-bg-soft: rgba(0, 0, 0, 0.08);
+  --overlay-filter-soft: none;
+  --overlay-bg-nested: rgba(0, 0, 0, 0.08);
+  --overlay-filter-nested: none;
+  --glass-border: 1px solid rgba(0, 0, 0, 0.06);
+  --glass-border-hover: 1px solid rgba(0, 0, 0, 0.12);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--color-text-main);
+  background-color: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+[data-theme="dark"] {
+  /* Dark Mode (Premium Codex/OpenAI Tone) */
+  --bg-app: transparent;
+  --bg-main: #171717;
+  --bg-gradient: transparent;
+  --bg-panel: #171717;
+  --bg-card: #212121;
+  --bg-sidebar: transparent;
+  --bg-sidebar-border: rgba(255, 255, 255, 0.05);
+  --color-text-main: rgba(255, 255, 255, 0.9);
+  --color-text-muted: rgba(255, 255, 255, 0.55);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(255, 255, 255, 0.18);
+  --border-modal: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --main-surface-separator: rgba(255, 255, 255, 0.18);
+  --sidebar-label-opacity: 0.5;
+  --sidebar-item-opacity: 0.8;
+  --sidebar-item-hover-opacity: 0.97;
+  --sidebar-item-active-opacity: 1;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.026);
+  --sidebar-item-active: rgba(255, 255, 255, 0.042);
+  --sidebar-item-active-border: transparent;
+  --toolbar-control-bg: #2A2A2A;
+  --toolbar-control-hover: #303030;
+  --toolbar-control-active: #363636;
+  --toolbar-control-border: rgba(255, 255, 255, 0.10);
+  --toolbar-control-border-active: rgba(255, 255, 255, 0.18);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.10);
+  --bg-subtle: rgba(255, 255, 255, 0.05);
+  --bg-danger: rgba(248, 113, 113, 0.10);
+  --bg-well: rgba(0, 0, 0, 0.25);
+  --bg-elevated: #262626;
+  --bg-elevated-subtle: #2B2B2F;
+  --bg-modal: #242426;
+  --bg-input: #1E1E1E;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-hover: rgba(255, 255, 255, 0.22);
+  --shadow-modal: 0 32px 96px rgba(0, 0, 0, 0.58), 0 12px 32px rgba(0, 0, 0, 0.34);
+  --shadow-floating: 0 20px 56px rgba(0, 0, 0, 0.52), 0 8px 24px rgba(0, 0, 0, 0.32);
+  --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.18);
+  --overlay-bg: rgba(0, 0, 0, 0.30);
+  --overlay-filter: blur(4px) saturate(0);
+  --overlay-bg-soft: rgba(0, 0, 0, 0.16);
+  --overlay-filter-soft: none;
+  --overlay-bg-nested: rgba(0, 0, 0, 0.16);
+  --overlay-filter-nested: none;
+
+  /* Glassmorphism primitives */
+  --glass-border: 1px solid rgba(255, 255, 255, 0.07);
+  --glass-border-hover: 1px solid rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-heading {
+  font-family: "Archivo", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-gradient, var(--bg-app));
+  color: var(--color-text-main);
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+/* ==================== macOS Focus Rings ==================== */
+:focus-visible {
+  outline: 2px solid var(--border-active);
+  outline-offset: 1px;
+  border-radius: inherit;
+}
+
+.app-context-menu {
+  position: fixed;
+  z-index: 2600;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-popover, var(--shadow-soft));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-context-menu__item {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-main);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-context-menu__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.app-context-menu__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.app-context-menu__item--danger {
+  color: #dc2626;
+}
+
+.app-context-menu__item--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.app-context-menu__status {
+  padding: 6px 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* System function icons share one optical stroke weight; brand/tool artwork is not covered here. */
+.nav-item svg,
+.refresh-btn svg,
+.icon-btn svg,
+.icon-btn-tiny svg,
+.btn svg,
+.btn-sm svg,
+.file-viewer-btn svg,
+.file-viewer-primary-btn svg,
+.file-viewer-back-btn svg,
+.file-viewer-navigation-boundary-toggle svg,
+.file-workspace-nav__row svg,
+.app-context-menu__item svg,
+.source-read-mode-toggle svg,
+.source-read-mode-indicator svg,
+.source-search-panel svg,
+.tool-selector-capsule .unknown-tool-icon svg,
+.settings-action-btn svg,
+.btn-pick svg,
+.btn-close svg {
+  stroke-width: var(--system-icon-stroke-width);
+}
+
+/* ==================== Global Overlay ==================== */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--overlay-bg);
+  backdrop-filter: var(--overlay-filter);
+  -webkit-backdrop-filter: var(--overlay-filter);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.overlay-soft {
+  background: var(--overlay-bg-soft);
+  backdrop-filter: var(--overlay-filter-soft);
+  -webkit-backdrop-filter: var(--overlay-filter-soft);
+}
+
+.overlay-nested {
+  background: var(--overlay-bg-nested);
+  backdrop-filter: var(--overlay-filter-nested);
+  -webkit-backdrop-filter: var(--overlay-filter-nested);
+}
+
+/* ==================== Button Hierarchy ==================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  min-height: var(--control-height);
+  padding: 0 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  font-weight: 500;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+  opacity: 0.9;
+}
+
+.btn-primary,
+.primary-pill-btn {
+  background: var(--color-text-main);
+  color: var(--bg-card);
+  border: none;
+  font-weight: 600;
+}
+
+.primary-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 16px;
+  font-size: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.btn-primary:hover:not(:disabled),
+.primary-pill-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-primary:disabled,
+.primary-pill-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-secondary,
+.btn-cancel {
+  background: var(--bg-subtle);
+  color: var(--color-text-muted);
+  border: none;
+}
+
+.btn-secondary:hover,
+.btn-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+}
+
+.btn-danger {
+  background: var(--bg-danger);
+  color: #f87171;
+  border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.btn-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.file-viewer-btn,
+.file-viewer-primary-btn,
+.file-viewer-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  box-sizing: border-box;
+}
+
+.file-viewer-btn {
+  background: var(--bg-subtle);
+  color: var(--color-text-main);
+}
+
+.file-viewer-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+}
+
+.file-viewer-btn.danger {
+  background: var(--bg-danger);
+  color: #dc2626;
+}
+
+.file-viewer-btn.danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.file-viewer-primary-btn {
+  padding: 0 12px;
+  background: var(--color-text-main);
+  color: var(--bg-card);
+  font-weight: 600;
+}
+
+.file-viewer-primary-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.file-viewer-icon-btn {
+  width: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  opacity: 0.42;
+}
+
+.file-viewer-icon-btn:hover:not(:disabled),
+.file-viewer-icon-btn:focus-visible:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+  opacity: 1;
+}
+
+.file-viewer-btn:disabled,
+.file-viewer-primary-btn:disabled,
+.file-viewer-icon-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+/* 规则页自定义规则卡片等：与 .btn / .btn-secondary / .btn-danger 组合的同行操作尺寸 */
+.btn.rule-row-action {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.btn-primary.rule-row-action {
+  font-weight: 600;
+}
+
+/* ==================== Modal Primitives ==================== */
+.modal {
+  background: var(--bg-modal);
+  border-radius: 16px;
+  border: 1px solid var(--border-modal);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 90vh;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin: 0;
+}
+
+.modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.btn-close:hover {
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+}
+
+/* ==================== Page Layout Primitives ==================== */
+/* Shared across all view panels (rules, skills, config, mcp, settings) */
+.view-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.view-fixed-header {
+  flex-shrink: 0;
+  padding: 0 20px;
+  background: var(--bg-panel);
+  border-bottom: none;
+  backdrop-filter: blur(10px) saturate(1.04);
+}
+.view-fixed-header.view-fixed-header--search-popover {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
+.view-scroll-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  background: var(--bg-main);
+}
+.management-content-shell {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: var(--view-header-band-min-height);
+  padding: 0;
+  border-bottom: none;
+  box-sizing: border-box;
+  -webkit-app-region: drag;
+}
+.view-header h2 {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  line-height: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-main);
+  letter-spacing: -0.01em;
+}
+
+/* ==================== Header Actions ==================== */
+.header-actions { display: flex; align-items: center; gap: var(--header-actions-gap, 2px); -webkit-app-region: no-drag; }
+
+/* Settings header: align with padded chrome edge (no extra inset beyond view-fixed-header padding) */
+.settings-header-right {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  transform: none;
+  display: flex;
+  align-items: center;
+  gap: var(--header-actions-gap, 2px);
+  -webkit-app-region: no-drag;
+}
+
+/* Settings top chrome — same vertical band as management pages */
+.view-header.settings-header-row {
+  justify-content: center;
+  position: relative;
+  align-items: center;
+}
+
+/* Match management row: title fills header band vertically for alignment with capsule + actions */
+.settings-page-title {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  max-width: min(200px, 38vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: drag;
+}
+
+/* Header chrome save — 与 .header-ghost-control-size 顶栏行对齐 */
+.settings-header-right .btn {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  max-height: var(--control-height);
+  padding: 0 12px;
+  line-height: 1;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+/* Settings list: secondary actions + inline segmented tracks */
+.settings-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  min-height: var(--control-height);
+  padding: 0 14px;
+  background: rgba(150, 150, 150, 0.1);
+  color: var(--color-text-main);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  box-sizing: border-box;
+}
+.settings-action-btn:hover {
+  background: rgba(150, 150, 150, 0.2);
+}
+.settings-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.settings-action-btn.primary {
+  background: var(--color-text-main);
+  color: var(--bg-card);
+  border: none;
+  font-weight: 600;
+}
+.settings-action-btn.primary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* Card row segmented controls — same density as header L1 pill (intrinsic width, equal cells) */
+.segmented-control {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  width: max-content;
+  max-width: 100%;
+  align-items: stretch;
+  background: var(--toolbar-control-bg);
+  border: 1px solid var(--toolbar-control-border);
+  padding: var(--segmented-track-padding);
+  border-radius: var(--segmented-track-radius);
+  box-sizing: border-box;
+}
+.segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: var(--segmented-item-radius);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.segmented-btn:hover:not(.active) {
+  color: var(--color-text-main);
+}
+.segmented-btn.active {
+  background: var(--bg-card);
+  color: var(--color-text-main);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+[data-theme="dark"] .segmented-btn.active {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.header-count { font-size: 11px; color: var(--color-text-muted); }
+.refresh-msg { font-size: 11px; color: var(--color-text-muted); opacity: 0.7; }
+/* 全顶栏/工具行 refresh：幽灵图标钮（与弹窗 .icon-btn 同逻辑）；需带底框的用 .refresh-btn--boxed */
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-ghost-control-size, 32px);
+  height: var(--header-ghost-control-size, 32px);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  box-shadow: none;
+  opacity: 0.42;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.refresh-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+  border: none;
+}
+.refresh-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.refresh-btn.active {
+  opacity: 1;
+  background: var(--toolbar-control-active);
+  color: var(--color-text-main);
+  border: none;
+}
+.refresh-btn.refresh-btn--boxed {
+  opacity: 1;
+  width: var(--header-ghost-control-size, 32px);
+  height: var(--header-ghost-control-size, 32px);
+  background: var(--toolbar-control-bg);
+  border: 1px solid var(--toolbar-control-border);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.refresh-btn.refresh-btn--boxed:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--toolbar-control-hover);
+  color: var(--color-text-main);
+  border-color: var(--toolbar-control-border-active);
+}
+.view-header .refresh-btn:focus,
+.view-header .refresh-btn:focus-visible,
+.view-header .icon-btn-tiny:focus,
+.view-header .icon-btn-tiny:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--toolbar-control-border-active);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+/* Search input inline */
+.search-input-wrap {
+  --search-input-inline-padding: 10px;
+  display: flex;
+  align-items: center;
+  /* 略大 gap，避免放大镜圆环右缘与插入点共线被误认为「粗弧光标」 */
+  gap: 10px;
+  background: var(--toolbar-control-bg);
+  border: 1px solid var(--toolbar-control-border);
+  border-radius: 8px;
+  padding: 0 var(--search-input-inline-padding);
+  height: var(--header-ghost-control-size, 32px);
+  min-width: 220px;
+  box-shadow: none;
+}
+/* 限制图标占宽，防 SVG stroke 在 flex 中视觉上侵入文本列 */
+.search-input-wrap__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted);
+}
+.search-input {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--color-text-main);
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  caret-color: var(--color-text-main);
+  /* 与图标再隔一层，让插入点落在矩形文本盒内、远离圆环视觉 */
+  padding-left: 2px;
+}
+.search-input::placeholder { color: var(--color-text-muted); opacity: 0.5; }
+.view-header .search-input-wrap:focus-within {
+  border-color: var(--toolbar-control-border-active);
+  outline: 1px solid var(--toolbar-control-border-active);
+  outline-offset: 1px;
+}
+.search-input-wrap .icon-btn-tiny {
+  align-self: stretch;
+  height: auto;
+  margin-right: calc(-1 * var(--search-input-inline-padding));
+  border-radius: 7px;
+}
+.search-input-wrap .search-nav-btn {
+  width: 24px;
+  margin-right: 0;
+  border-radius: 6px;
+}
+.search-input-wrap .search-nav-btn:disabled {
+  cursor: default;
+  opacity: 0.22;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.search-match-count {
+  flex-shrink: 0;
+  min-width: 3.5ch;
+  text-align: right;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.workspace-search-anchor {
+  position: relative;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.icon-btn-tiny {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  width: var(--header-ghost-control-size, 32px);
+  height: var(--header-ghost-control-size, 32px);
+  padding: 0;
+  border-radius: 8px;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  opacity: 0.42;
+}
+.icon-btn-tiny:hover {
+  opacity: 1;
+  color: var(--color-text-main);
+  background: var(--bg-hover);
+}
+.icon-btn-tiny:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--toolbar-control-border-active);
+  outline-offset: 1px;
+}
+
+.view-header .header-actions,
+.view-header .settings-header-right {
+  overflow: visible;
+}
+
+/* Icon-only control (modal/顶栏) — 幽灵，悬停再强调；与 .refresh-btn 同 32×32 热区 */
+.icon-btn {
+  width: var(--header-ghost-control-size, 32px);
+  height: var(--header-ghost-control-size, 32px);
+  padding: 0;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  opacity: 0.42;
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+}
+.icon-btn:focus-visible {
+  opacity: 1;
+}
+.view-header .icon-btn:focus,
+.view-header .icon-btn:focus-visible,
+.modal-header .icon-btn:focus,
+.modal-header .icon-btn:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--toolbar-control-border-active);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.btn-sm {
+  min-height: var(--control-height);
+  padding: 0 12px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+/* ==================== Tab Systems ==================== */
+/* Level 1: segmented control (Settings uses .level1-tabs.level1-tabs--settings-pair) */
+.level1-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  flex-shrink: 0;
+  width: fit-content;
+  max-width: min(100%, 720px);
+  padding: var(--segmented-track-padding);
+  border-radius: var(--segmented-track-radius);
+  background: var(--toolbar-control-bg);
+  border: 1px solid var(--toolbar-control-border);
+  box-sizing: border-box;
+}
+/* Legacy: L1 row directly under fixed header (no merged title row) */
+.view-fixed-header > .level1-tabs {
+  display: flex;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 8px;
+}
+.view-fixed-header > .level1-tabs .l1-tab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Modal and legacy management rows can keep segmented controls in their own header. */
+.view-header.management-header-row .level1-tabs {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+  box-sizing: border-box;
+  /* Tauri self-only: 子层会截获事件，与仪表盘 .dashboard-header-center 同策，使命中落到父级 .view-header */
+  pointer-events: none;
+}
+/* Settings top bar: two equal tabs, same segment width as management L1 */
+.level1-tabs.level1-tabs--settings-pair {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: min(100%, calc(100% - 380px));
+}
+.level1-tabs.level1-tabs--settings-triple {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: min(100%, calc(100% - 320px));
+}
+/* Skill viewer modal：与设置页两档同款（settings 用 settings-header-row 不会吃到下面 3 列规则；此处须显式压过） */
+.level1-tabs.level1-tabs--skill-viewer-pair {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: min(100%, calc(100% - 380px));
+}
+.level1-tabs.level1-tabs--skill-viewer-triple {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: min(100%, calc(100% - 320px));
+}
+.level1-tabs.level1-tabs--project-pair {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: 100%;
+}
+.view-header.management-header-row .level1-tabs.level1-tabs--skill-viewer-pair {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: min(100%, calc(100% - 380px));
+}
+.view-header.management-header-row .level1-tabs.level1-tabs--skill-viewer-triple {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: min(100%, calc(100% - 320px));
+}
+.view-header.management-header-row .level1-tabs.level1-tabs--project-pair {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(var(--l1-tab-segment-min-width), 1fr));
+  width: max-content;
+  max-width: 100%;
+}
+/* Rules / Skills: window toolbar only owns page title and global actions. Page tabs live in .content-tab-row. */
+.view-header.management-header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--management-header-title-capsule-gap, 12px);
+  position: relative;
+}
+.view-header.management-header-row.management-header-row--search-open {
+  grid-template-columns: minmax(0, 1fr) minmax(min(100%, var(--management-header-right-search-rail-px, 360px)), auto);
+}
+.view-header.management-header-row .management-header-title {
+  grid-column: 1;
+  justify-self: start;
+  min-width: 0;
+  max-width: min(200px, 40vw);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  padding: 0;
+  background: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: drag;
+}
+.view-header.management-header-row .l1-tab {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.view-header.management-header-row .management-header-actions {
+  grid-column: 2;
+  justify-self: end;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  /* The full action rail stays draggable except the actual controls. */
+  -webkit-app-region: drag;
+  pointer-events: none;
+  /* Header icon tooltips expand below the action rail */
+  overflow: visible;
+}
+/* Interactive children restore clicks and opt out of window dragging. */
+.view-header.management-header-row .management-header-actions .refresh-btn,
+.view-header.management-header-row .management-header-actions .workspace-search-anchor,
+.view-header.management-header-row .management-header-actions .search-input-wrap,
+.view-header.management-header-row .management-header-actions .icon-btn-tiny,
+.view-header.management-header-row .management-header-actions .icon-btn {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+/* 右栏在搜索展开时让输入条承担收缩，32px 图标不挤扁 */
+.view-header.management-header-row.management-header-row--search-open .management-header-actions .workspace-search-anchor,
+.view-header.management-header-row.management-header-row--search-open .management-header-actions .search-input-wrap {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 100%;
+}
+.view-header.management-header-row.management-header-row--search-open .management-header-actions .workspace-search-anchor > .search-input-wrap {
+  width: 100%;
+}
+.view-header.management-header-row.management-header-row--search-open .management-header-actions .refresh-btn {
+  flex-shrink: 0;
+}
+.view-header.management-header-row.management-header-row--search-open .management-header-actions .icon-btn-tiny {
+  flex-shrink: 0;
+}
+
+.content-tab-row {
+  --content-tab-row-height: 32px;
+  --content-tab-row-bleed-left: var(--page-padding-x, 20px);
+  --content-tab-row-bleed-right: var(--page-padding-x, 20px);
+  --content-tab-label-shift-left: 0px;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: var(--content-tab-row-height);
+  border-bottom: 0;
+  -webkit-app-region: no-drag;
+}
+.main.sidebar-collapsed .content-tab-row {
+  --content-tab-row-bleed-left: var(--collapsed-header-safe-left);
+  --content-tab-label-shift-left: calc(var(--collapsed-header-safe-left) - var(--collapsed-content-inset-x, var(--page-padding-x, 20px)));
+}
+.content-tab-row::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--content-tab-row-bleed-left));
+  right: calc(-1 * var(--content-tab-row-bleed-right));
+  bottom: 0;
+  height: 1px;
+  background: var(--border-color);
+  pointer-events: none;
+}
+.content-tabs {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 28px;
+  height: var(--content-tab-row-height);
+  margin-left: calc(-1 * var(--content-tab-label-shift-left));
+  transition: margin-left 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.content-tab {
+  position: relative;
+  height: var(--content-tab-row-height);
+  padding: 0 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color 0.16s ease, opacity 0.16s ease;
+}
+.content-tab:hover {
+  color: var(--color-text-main);
+}
+.content-tab.active {
+  color: var(--color-text-main);
+  font-weight: 650;
+}
+.content-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: currentColor;
+}
+.content-tab:focus-visible {
+  outline: 1px solid var(--toolbar-control-border-active);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-tabs {
+    transition: none;
+  }
+}
+
+/* Skill detail modal — 与规则/Skills 同几何居中：左右 flex:1 等分，中间胶囊不拉伸 */
+.view-header.management-header-row.skill-viewer-management-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  min-height: auto;
+}
+.view-header.management-header-row.skill-viewer-management-header .skill-viewer-header-side {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.view-header.management-header-row.skill-viewer-management-header .skill-viewer-header-side--start {
+  justify-content: flex-start;
+}
+.view-header.management-header-row.skill-viewer-management-header .skill-viewer-header-side--end {
+  justify-content: flex-end;
+}
+.view-header.management-header-row.skill-viewer-management-header .skill-viewer-header-title-block {
+  position: static;
+  left: auto;
+  top: auto;
+  bottom: auto;
+  transform: none;
+  max-width: min(340px, 40vw);
+  white-space: normal;
+  overflow: hidden;
+}
+.view-header.management-header-row.skill-viewer-management-header .skill-viewer-header-title-block button {
+  -webkit-app-region: no-drag;
+}
+.view-header.management-header-row.skill-viewer-management-header .level1-tabs.level1-tabs--skill-viewer-pair {
+  flex: 0 0 auto;
+  max-width: min(100%, calc(100% - 300px));
+}
+.view-header.management-header-row.skill-viewer-management-header .level1-tabs.level1-tabs--skill-viewer-triple {
+  flex: 0 0 auto;
+  max-width: min(100%, calc(100% - 240px));
+}
+.view-header.management-header-row.skill-viewer-management-header .level1-tabs.level1-tabs--skill-viewer-pair .l1-tab {
+  white-space: nowrap;
+}
+.view-header.management-header-row.skill-viewer-management-header .level1-tabs.level1-tabs--skill-viewer-triple .l1-tab {
+  white-space: nowrap;
+}
+.view-header.management-header-row.skill-viewer-management-header .management-header-actions {
+  position: static;
+  right: auto;
+  top: auto;
+  bottom: auto;
+  transform: none;
+}
+.l1-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--segmented-item-radius);
+  margin-bottom: 0;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.l1-tab:hover:not(.active) {
+  color: var(--color-text-main);
+}
+.l1-tab.active {
+  background: var(--bg-card);
+  color: var(--color-text-main);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+[data-theme="dark"] .l1-tab.active {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Below header border: tool row + banners — fixed, same bg as scroll surface */
+.view-pinned-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 0;
+  background: var(--bg-main);
+  box-sizing: border-box;
+}
+/* Level 2: tool selector controls */
+.level2-tabs { display: flex; column-gap: 8px; row-gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.view-pinned-toolbar .level2-tabs {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.l2-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: var(--header-ghost-control-size, 32px);
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: var(--bg-elevated-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-sizing: border-box;
+  max-width: min(100%, 220px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.l2-tab:hover { background: var(--bg-hover); border-color: var(--border-active); color: var(--color-text-main); }
+.l2-tab.active { background: var(--bg-active); color: var(--color-text-main); border-color: var(--border-active); box-shadow: none; font-weight: 600; }
+.l1-tab svg,
+.l2-tab svg {
+  flex-shrink: 0;
+}
+
+/* ==================== Content Primitives ==================== */
+.item-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.empty { text-align: center; padding: 60px; color: var(--color-text-muted); opacity: 0.7; font-size: 13px; }
+
+[data-theme="dark"] .view-fixed-header {
+  background: var(--bg-panel);
+  border-bottom-color: transparent;
+  backdrop-filter: none;
+}
+
+[data-theme="dark"] .view-scroll-content {
+  background: var(--bg-main);
+}
+
+[data-theme="dark"] .view-pinned-toolbar {
+  background: var(--bg-main);
+}
+
+[data-theme="dark"] .search-input-wrap,
+[data-theme="dark"] .l2-tab {
+  background: var(--bg-elevated-subtle);
+  border-color: var(--border-color);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .search-input-wrap {
+  background: var(--toolbar-control-bg);
+  border-color: var(--toolbar-control-border);
+}
+
+[data-theme="dark"] .search-input-wrap:hover,
+[data-theme="dark"] .l2-tab:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-active);
+}
+
+[data-theme="dark"] .search-input-wrap:hover {
+  background: var(--toolbar-control-hover);
+  border-color: var(--toolbar-control-border-active);
+}
+
+[data-theme="dark"] .refresh-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--color-text-main);
+  border: none;
+}
+
+[data-theme="dark"] .refresh-btn.active {
+  background: var(--toolbar-control-active);
+  color: var(--color-text-main);
+  border: none;
+}
+
+[data-theme="dark"] .refresh-btn.refresh-btn--boxed {
+  background: var(--toolbar-control-bg);
+  border: 1px solid var(--toolbar-control-border);
+}
+[data-theme="dark"] .refresh-btn.refresh-btn--boxed:hover:not(:disabled) {
+  background: var(--toolbar-control-hover);
+  color: var(--color-text-main);
+  border-color: var(--toolbar-control-border-active);
+}
+
+[data-theme="dark"] .l2-tab.active {
+  background: var(--bg-active);
+  color: var(--color-text-main);
+  border-color: var(--border-active);
+}
+
+/* ==================== Spin Animation ==================== */
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }

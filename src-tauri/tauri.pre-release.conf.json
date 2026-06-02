@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Modus",
+  "identifier": "com.leon4z.modus.pre-release",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZDMzc0QjQzMkU4RjFFRDgKUldUWUhvOHVRMHMzYkxLOTgrZ3diQTg4NE1Cd3F0SlF3bldWWDROdTBoOUZwKzNLVHptVzVnR0wK",
+      "endpoints": [
+        "https://github.com/leon4z/Modus/releases/download/modus-test/latest.json"
+      ]
+    }
+  }
+}
