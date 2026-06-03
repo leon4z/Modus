@@ -102,14 +102,20 @@ fn tool_name_map(registry: &ToolRegistry) -> HashMap<String, String> {
 }
 
 pub(crate) fn extract_managed_block(existing: &str) -> ManagedBlockParse {
-    let start_indices: Vec<usize> = existing
-        .match_indices(MARKER_START)
-        .map(|(idx, _)| idx)
-        .collect();
-    let end_indices: Vec<usize> = existing
-        .match_indices(MARKER_END)
-        .map(|(idx, _)| idx)
-        .collect();
+    let mut start_indices: Vec<(usize, &'static str)> = vec![];
+    let mut end_indices: Vec<(usize, &'static str)> = vec![];
+    for (_, marker_start, marker_end) in managed_marker_pairs() {
+        start_indices.extend(
+            existing
+                .match_indices(marker_start)
+                .map(|(idx, _)| (idx, marker_start)),
+        );
+        end_indices.extend(
+            existing
+                .match_indices(marker_end)
+                .map(|(idx, _)| (idx, marker_end)),
+        );
+    }
 
     if start_indices.is_empty() && end_indices.is_empty() {
         return ManagedBlockParse::Missing;
@@ -118,14 +124,20 @@ pub(crate) fn extract_managed_block(existing: &str) -> ManagedBlockParse {
         return ManagedBlockParse::Malformed("duplicate or incomplete managed markers".to_string());
     }
 
-    let start = start_indices[0];
-    let end_marker_start = end_indices[0];
+    let (start, marker_start) = start_indices[0];
+    let (end_marker_start, marker_end) = end_indices[0];
+    let same_generation = managed_marker_pairs()
+        .into_iter()
+        .any(|(_, start, end)| start == marker_start && end == marker_end);
+    if !same_generation {
+        return ManagedBlockParse::Malformed("mixed managed marker generations".to_string());
+    }
     if end_marker_start < start {
         return ManagedBlockParse::Malformed(
             "managed end marker appears before start marker".to_string(),
         );
     }
-    let end = end_marker_start + MARKER_END.len();
+    let end = end_marker_start + marker_end.len();
     ManagedBlockParse::Present(existing[start..end].to_string())
 }
 
@@ -408,7 +420,7 @@ fn classify_target(
             Some(message),
         ),
         (Some(expected), ManagedBlockParse::Present(current_block))
-            if &current_block == expected =>
+            if managed_blocks_equivalent(&current_block, expected) =>
         {
             if source_pending {
                 (
@@ -943,6 +955,9 @@ fn remove_managed_block_from_target(
         return Ok(());
     }
     let existing = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    if let ManagedBlockParse::Malformed(message) = extract_managed_block(&existing) {
+        return Err(format!("Managed rule markers are malformed: {}", message));
+    }
     let cleaned = remove_block(&existing);
     if cleaned != existing {
         std::fs::write(&path, cleaned).map_err(|e| e.to_string())?;
@@ -1418,6 +1433,23 @@ mod tests {
             ),
             ManagedBlockParse::Malformed(_)
         ));
+        assert!(matches!(
+            extract_managed_block("<!-- ACC:DEFAULT:START -->\na\n<!-- MODUS:DEFAULT:END -->"),
+            ManagedBlockParse::Malformed(_)
+        ));
+    }
+
+    #[test]
+    fn managed_block_parser_accepts_legacy_markers() {
+        let current = format!(
+            "{}\nlegacy managed\n{}",
+            LEGACY_MARKER_START, LEGACY_MARKER_END
+        );
+
+        assert_eq!(
+            extract_managed_block(&current),
+            ManagedBlockParse::Present(current)
+        );
     }
 
     #[test]
@@ -1447,13 +1479,52 @@ mod tests {
     }
 
     #[test]
+    fn scan_treats_legacy_marker_block_with_matching_body_as_in_sync() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rule_path = tmp.path().join("RULES.md");
+        let rule = default_rule(Some(vec!["tool-a".to_string()]), "managed");
+        let all_tool_ids = vec!["tool-a".to_string()];
+        let block = build_managed_rules_block(&[rule.clone()], "tool-a", &all_tool_ids).unwrap();
+        let legacy_block = block
+            .replace(MARKER_START, LEGACY_MARKER_START)
+            .replace(MARKER_END, LEGACY_MARKER_END);
+        std::fs::write(&rule_path, format!("before\n\n{}\n\nafter", legacy_block)).unwrap();
+        let registry =
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                rule_path.to_string_lossy().to_string(),
+            ))]);
+        let mut config = test_config(&rule_path, rule.clone());
+        config.default_rule_injection_baselines.common_rule = rule_fingerprint(&rule);
+
+        let state = get_managed_rules_state_for_config(&registry, &config);
+
+        assert_eq!(state.targets.len(), 1);
+        assert_eq!(
+            state.targets[0].classification,
+            ManagedRuleTargetClassification::InSync
+        );
+        assert!(state.targets[0]
+            .current_block
+            .as_ref()
+            .unwrap()
+            .contains(LEGACY_MARKER_START));
+        assert!(state.targets[0]
+            .expected_block
+            .as_ref()
+            .unwrap()
+            .contains(MARKER_START));
+    }
+
+    #[test]
     fn scan_classifies_missing_drift_and_certified_default_targets() {
         let tmp = tempfile::tempdir().unwrap();
         let missing_path = tmp.path().join("missing.md");
         let drift_path = tmp.path().join("drift.md");
         std::fs::write(
             &drift_path,
-            format!("{}\nold\n{}", MARKER_START, MARKER_END),
+            format!("{}\nold\n{}", LEGACY_MARKER_START, LEGACY_MARKER_END),
         )
         .unwrap();
         let rule = default_rule(
@@ -1853,5 +1924,28 @@ mod tests {
     fn leave_management_remove_preserves_content_outside_block() {
         let existing = format!("before\n{}\nmanaged\n{}\nafter", MARKER_START, MARKER_END);
         assert_eq!(remove_block(&existing), "before\n\nafter");
+    }
+
+    #[test]
+    fn leave_management_remove_rejects_malformed_existing_managed_markers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rule_path = tmp.path().join("RULES.md");
+        let malformed = format!("before\n{}\nmissing end\nafter", LEGACY_MARKER_START);
+        std::fs::write(&rule_path, &malformed).unwrap();
+        let registry =
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                rule_path.to_string_lossy().to_string(),
+            ))]);
+        let config = test_config(
+            &rule_path,
+            default_rule(Some(vec!["tool-a".to_string()]), "managed"),
+        );
+
+        let result = remove_managed_block_from_target(&registry, &config, "tool-a");
+
+        assert!(result.unwrap_err().contains("malformed"));
+        assert_eq!(std::fs::read_to_string(&rule_path).unwrap(), malformed);
     }
 }

@@ -9,6 +9,8 @@ pub(crate) fn diff_rules_domain(
     right_content: String,
     right_label: String,
 ) -> DiffResult {
+    let left_content = normalize_managed_marker_generation(&left_content);
+    let right_content = normalize_managed_marker_generation(&right_content);
     let diff = TextDiff::from_lines(&left_content, &right_content);
     let changes = diff
         .iter_all_changes()
@@ -106,5 +108,52 @@ mod tests {
         );
         assert_eq!(result.left_label, "LEFT_LABEL");
         assert_eq!(result.right_label, "RIGHT_LABEL");
+    }
+
+    #[test]
+    fn diff_treats_legacy_and_current_managed_markers_as_equal() {
+        let left = "<!-- ACC:DEFAULT:START -->\nmanaged\n<!-- ACC:DEFAULT:END -->";
+        let right = "<!-- MODUS:DEFAULT:START -->\nmanaged\n<!-- MODUS:DEFAULT:END -->";
+        let result = diff_rules_domain(
+            left.to_string(),
+            "left".to_string(),
+            right.to_string(),
+            "right".to_string(),
+        );
+
+        assert!(result.changes.iter().all(|change| change.tag == "equal"));
+        assert!(result
+            .changes
+            .iter()
+            .any(|change| change.content.contains("MODUS:DEFAULT:START")));
+        assert!(!result
+            .changes
+            .iter()
+            .any(|change| change.content.contains("ACC:DEFAULT:START")));
+    }
+
+    #[test]
+    fn diff_still_reports_body_changes_inside_managed_markers() {
+        let left = "<!-- ACC:DEFAULT:START -->\nold\n<!-- ACC:DEFAULT:END -->";
+        let right = "<!-- MODUS:DEFAULT:START -->\nnew\n<!-- MODUS:DEFAULT:END -->";
+        let result = diff_rules_domain(
+            left.to_string(),
+            "left".to_string(),
+            right.to_string(),
+            "right".to_string(),
+        );
+
+        assert!(result
+            .changes
+            .iter()
+            .any(|change| change.tag == "delete" && change.content.contains("old")));
+        assert!(result
+            .changes
+            .iter()
+            .any(|change| change.tag == "insert" && change.content.contains("new")));
+        assert!(!result
+            .changes
+            .iter()
+            .any(|change| change.tag != "equal" && change.content.contains("DEFAULT")));
     }
 }

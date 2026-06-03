@@ -3,8 +3,25 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
-pub(crate) const MARKER_START: &str = "<!-- ACC:DEFAULT:START -->";
-pub(crate) const MARKER_END: &str = "<!-- ACC:DEFAULT:END -->";
+pub(crate) const MARKER_START: &str = "<!-- MODUS:DEFAULT:START -->";
+pub(crate) const MARKER_END: &str = "<!-- MODUS:DEFAULT:END -->";
+pub(crate) const LEGACY_MARKER_START: &str = "<!-- ACC:DEFAULT:START -->";
+pub(crate) const LEGACY_MARKER_END: &str = "<!-- ACC:DEFAULT:END -->";
+
+pub(crate) fn managed_marker_pairs() -> [(usize, &'static str, &'static str); 2] {
+    [
+        (0, MARKER_START, MARKER_END),
+        (1, LEGACY_MARKER_START, LEGACY_MARKER_END),
+    ]
+}
+
+fn find_managed_marker_pair(existing: &str) -> Option<(&'static str, &'static str)> {
+    managed_marker_pairs()
+        .into_iter()
+        .filter(|(_, start, end)| existing.contains(start) || existing.contains(end))
+        .min_by_key(|(index, start, _)| existing.find(start).unwrap_or(usize::MAX - index))
+        .map(|(_, start, end)| (start, end))
+}
 
 fn unique_sorted(mut ids: Vec<String>) -> Vec<String> {
     ids.retain(|id| !id.trim().is_empty());
@@ -102,40 +119,77 @@ pub(crate) fn build_managed_rules_block_for_tools(
 /// Insert or replace a marker-delimited block in existing content.
 /// Pure function - no file I/O.
 pub fn inject_block(existing: &str, block: &str) -> String {
-    if existing.contains(MARKER_START) && existing.contains(MARKER_END) {
-        let start_idx = existing.find(MARKER_START).unwrap();
-        let end_idx = existing.find(MARKER_END).unwrap() + MARKER_END.len();
-        format!(
-            "{}{}{}",
-            &existing[..start_idx],
-            block,
-            &existing[end_idx..]
-        )
-    } else if existing.is_empty() {
+    if let Some((marker_start, marker_end)) = find_managed_marker_pair(existing) {
+        if existing.contains(marker_start) && existing.contains(marker_end) {
+            let start_idx = existing.find(marker_start).unwrap();
+            let end_idx = existing.find(marker_end).unwrap() + marker_end.len();
+            return format!(
+                "{}{}{}",
+                &existing[..start_idx],
+                block,
+                &existing[end_idx..]
+            );
+        }
+    }
+    if existing.is_empty() {
         block.to_string()
     } else {
         format!("{}\n\n{}", existing.trim_end(), block)
     }
 }
 
-/// Remove a marker-delimited block from existing content.
-/// Pure function - no file I/O.
-pub fn remove_block(existing: &str) -> String {
-    if existing.contains(MARKER_START) && existing.contains(MARKER_END) {
-        let start_idx = existing.find(MARKER_START).unwrap();
-        let end_idx = existing.find(MARKER_END).unwrap() + MARKER_END.len();
+/// Return true when two managed blocks have identical body content, ignoring marker generations.
+pub(crate) fn managed_blocks_equivalent(left: &str, right: &str) -> bool {
+    fn body(block: &str) -> Option<&str> {
+        for (_, marker_start, marker_end) in managed_marker_pairs() {
+            if let (Some(start_idx), Some(end_idx)) =
+                (block.find(marker_start), block.find(marker_end))
+            {
+                let body_start = start_idx + marker_start.len();
+                if end_idx >= body_start {
+                    return Some(&block[body_start..end_idx]);
+                }
+            }
+        }
+        None
+    }
+
+    body(left) == body(right)
+}
+
+pub(crate) fn normalize_managed_marker_generation(content: &str) -> String {
+    content
+        .replace(LEGACY_MARKER_START, MARKER_START)
+        .replace(LEGACY_MARKER_END, MARKER_END)
+}
+
+fn remove_marker_pair(existing: &str, marker_start: &str, marker_end: &str) -> Option<String> {
+    if existing.contains(marker_start) && existing.contains(marker_end) {
+        let start_idx = existing.find(marker_start).unwrap();
+        let end_idx = existing.find(marker_end).unwrap() + marker_end.len();
         let before = existing[..start_idx].trim_end();
         let after = existing[end_idx..].trim_start();
         if before.is_empty() {
-            after.to_string()
+            Some(after.to_string())
         } else if after.is_empty() {
-            before.to_string()
+            Some(before.to_string())
         } else {
-            format!("{}\n\n{}", before, after)
+            Some(format!("{}\n\n{}", before, after))
         }
     } else {
-        existing.to_string()
+        None
     }
+}
+
+/// Remove a marker-delimited block from existing content.
+/// Pure function - no file I/O.
+pub fn remove_block(existing: &str) -> String {
+    if let Some((marker_start, marker_end)) = find_managed_marker_pair(existing) {
+        if let Some(content) = remove_marker_pair(existing, marker_start, marker_end) {
+            return content;
+        }
+    }
+    existing.to_string()
 }
 
 pub(crate) fn inject_default_rules_domain(
@@ -228,6 +282,10 @@ pub(crate) fn inject_default_rules_for_tools_with_config(
         String::new()
     };
 
+    if let ManagedBlockParse::Malformed(message) = extract_managed_block(&existing) {
+        return Err(format!("Managed rule markers are malformed: {}", message));
+    }
+
     let new_content = inject_block(&existing, &block);
 
     std::fs::write(target_path, new_content).map_err(|e| e.to_string())?;
@@ -291,9 +349,42 @@ mod tests {
     }
 
     #[test]
+    fn inject_block_replaces_legacy_marker_with_current_marker_block() {
+        let existing = format!(
+            "before\n{}\nold rules\n{}\nafter",
+            LEGACY_MARKER_START, LEGACY_MARKER_END
+        );
+        let block = format!("{}\nnew rules\n{}", MARKER_START, MARKER_END);
+        let result = inject_block(&existing, &block);
+
+        assert_eq!(result, format!("before\n{}\nafter", block));
+        assert!(!result.contains(LEGACY_MARKER_START));
+        assert!(!result.contains(LEGACY_MARKER_END));
+    }
+
+    #[test]
     fn inject_block_trims_trailing_whitespace() {
         let result = inject_block("content   \n\n\n", "BLOCK");
         assert_eq!(result, "content\n\nBLOCK");
+    }
+
+    #[test]
+    fn managed_blocks_equivalent_ignores_marker_generation() {
+        let current = format!(
+            "{}\nmanaged rules\n{}",
+            LEGACY_MARKER_START, LEGACY_MARKER_END
+        );
+        let expected = format!("{}\nmanaged rules\n{}", MARKER_START, MARKER_END);
+
+        assert!(managed_blocks_equivalent(&current, &expected));
+    }
+
+    #[test]
+    fn managed_blocks_equivalent_rejects_body_drift() {
+        let current = format!("{}\nold rules\n{}", LEGACY_MARKER_START, LEGACY_MARKER_END);
+        let expected = format!("{}\nnew rules\n{}", MARKER_START, MARKER_END);
+
+        assert!(!managed_blocks_equivalent(&current, &expected));
     }
 
     #[test]
@@ -305,6 +396,13 @@ mod tests {
     #[test]
     fn remove_block_only_marker() {
         let existing = format!("{}\nrules\n{}", MARKER_START, MARKER_END);
+        let result = remove_block(&existing);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn remove_block_only_legacy_marker() {
+        let existing = format!("{}\nrules\n{}", LEGACY_MARKER_START, LEGACY_MARKER_END);
         let result = remove_block(&existing);
         assert_eq!(result, "");
     }
@@ -397,6 +495,47 @@ mod tests {
         assert!(content.contains(MARKER_START));
         assert!(content.contains("hermes managed instruction"));
         assert!(content.contains(MARKER_END));
+    }
+
+    #[test]
+    fn inject_default_rules_rejects_malformed_existing_managed_markers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base_dir = tmp.path().join("tool-a");
+        let target_path = base_dir.join("RULES.md");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        let malformed = format!("before\n{}\nmissing end\nafter", LEGACY_MARKER_START);
+        std::fs::write(&target_path, &malformed).unwrap();
+        let registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(DevToolAdapter::new(
+            "tool-a", "Tool A", "T", base_dir, false,
+        ))]);
+        let mut config = app_config::AppConfig::default();
+        config.tool_capability_overrides.insert(
+            "tool-a".to_string(),
+            app_config::ToolCapabilityOverrides {
+                custom_rule_source_type: None,
+                custom_rule_source_path: None,
+                custom_global_rule_target: Some(target_path.to_string_lossy().to_string()),
+                shared_skill_direct_read: None,
+                ..Default::default()
+            },
+        );
+        config.default_rules = vec![app_config::DefaultRule {
+            id: "common_rule".to_string(),
+            name: "Global Rules".to_string(),
+            content: "managed instruction".to_string(),
+            inject_to: vec![],
+            managed_targets: Some(vec!["tool-a".to_string()]),
+        }];
+
+        let result = inject_default_rules_for_tools_with_config(
+            &registry,
+            &config,
+            "tool-a".to_string(),
+            vec!["tool-a".to_string()],
+        );
+
+        assert!(result.unwrap_err().contains("malformed"));
+        assert_eq!(std::fs::read_to_string(&target_path).unwrap(), malformed);
     }
 
     #[test]
