@@ -1,6 +1,6 @@
 {
   "name": "modus",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A macOS desktop app for managing local AI coding tool rules, skills, configs, and MCP settings.",
   "type": "module",
   "scripts": {

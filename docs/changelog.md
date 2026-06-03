@@ -4,6 +4,12 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.4 - 2026-06-04
+
+- Updated managed Global Rule block markers to use the Modus product name while preserving compatibility with existing managed blocks.
+- Kept legacy managed blocks in sync when their rule content matches, and upgraded them to the new marker names on the next explicit injection.
+- Prevented malformed managed block markers from being overwritten or duplicated during sync.
+
 ## 1.0.3 - 2026-06-03
 
 - Made the Settings GitHub action open the public Modus project page.
