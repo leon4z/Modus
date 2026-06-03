@@ -4,6 +4,10 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.1 - 2026-06-03
+
+- Improved CLI tool detection for installed macOS builds by checking common local binary directories when the app is launched without a shell PATH.
+
 ## 1.0.0 - 2026-06-03
 
 - Prepared the Modus mainline around the retained local core workflows: Dashboard, Rules, Skills, Config, MCP, and Settings.
