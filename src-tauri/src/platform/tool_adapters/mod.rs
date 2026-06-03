@@ -7,6 +7,8 @@ use crate::platform::tool_capabilities::{
     capability_matches_path, capability_projections, capability_source_is_directory,
     effective_capabilities, mcp_sources, rule_sources::can_write_rule_path_for_adapter,
 };
+use std::collections::HashSet;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -122,10 +124,53 @@ pub trait ToolAdapter: Send + Sync {
 }
 
 pub(crate) fn command_exists(command: &str) -> bool {
-    let Some(paths) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&paths).any(|path| is_executable_file(&path.join(command)))
+    command_exists_in_paths(command, command_search_paths())
+}
+
+fn command_exists_in_paths<I>(command: &str, paths: I) -> bool
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    paths
+        .into_iter()
+        .any(|path| is_executable_file(&path.join(command)))
+}
+
+fn command_search_paths() -> impl Iterator<Item = PathBuf> {
+    unique_command_paths(path_env_command_dirs().chain(fallback_command_dirs()))
+}
+
+fn path_env_command_dirs() -> impl Iterator<Item = PathBuf> {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+}
+
+fn fallback_command_dirs() -> impl Iterator<Item = PathBuf> {
+    let home = dirs::home_dir();
+    [
+        Some(PathBuf::from("/opt/homebrew/bin")),
+        Some(PathBuf::from("/usr/local/bin")),
+        Some(PathBuf::from("/opt/local/bin")),
+        Some(PathBuf::from("/usr/bin")),
+        Some(PathBuf::from("/bin")),
+        home.as_ref().map(|path| path.join(".local/bin")),
+        home.as_ref().map(|path| path.join(".cargo/bin")),
+    ]
+    .into_iter()
+    .flatten()
+}
+
+fn unique_command_paths<I>(paths: I) -> impl Iterator<Item = PathBuf>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    let mut seen = HashSet::<OsString>::new();
+    paths.into_iter().filter(move |path| {
+        let key = path.as_os_str().to_os_string();
+        seen.insert(key)
+    })
 }
 
 #[cfg(unix)]
@@ -140,6 +185,52 @@ pub(crate) fn is_executable_file(path: &Path) -> bool {
 #[cfg(not(unix))]
 pub(crate) fn is_executable_file(path: &Path) -> bool {
     path.is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn command_search_paths_keeps_path_env_before_fallbacks_and_dedupes() {
+        let path_env = std::env::join_paths([
+            PathBuf::from("/tmp/modus-command-a"),
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/tmp/modus-command-a"),
+        ])
+        .unwrap();
+
+        let paths: Vec<_> =
+            unique_command_paths(std::env::split_paths(&path_env).chain(fallback_command_dirs()))
+                .collect();
+
+        assert_eq!(paths[0], PathBuf::from("/tmp/modus-command-a"));
+        assert_eq!(paths[1], PathBuf::from("/opt/homebrew/bin"));
+        assert_eq!(
+            paths
+                .iter()
+                .filter(|path| path.as_path() == Path::new("/opt/homebrew/bin"))
+                .count(),
+            1
+        );
+        assert!(paths.iter().any(|path| path == Path::new("/usr/local/bin")));
+    }
+
+    #[test]
+    fn command_exists_checks_executable_files_in_candidate_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let command_path = tmp.path().join("modus-test-command");
+        fs::write(&command_path, "").unwrap();
+        let mut permissions = fs::metadata(&command_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&command_path, permissions).unwrap();
+
+        assert!(command_exists_in_paths(
+            "modus-test-command",
+            unique_command_paths([tmp.path().to_path_buf()])
+        ));
+    }
 }
 
 pub fn adapter_has_default_global_rule_file_target(adapter: &dyn ToolAdapter) -> bool {
