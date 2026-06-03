@@ -62,6 +62,8 @@ Modus is not a model proxy, API router, account manager, subscription manager, r
 
 Download the latest build from [GitHub Releases](https://github.com/leon4z/Modus/releases/latest). If no release asset is available yet, run Modus from source.
 
+Current macOS release assets are not yet signed with an Apple Developer ID or notarized by Apple. macOS may ask you to approve the app manually in Privacy & Security before the first launch.
+
 ## Development
 
 Requirements:
