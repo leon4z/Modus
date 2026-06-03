@@ -8,7 +8,7 @@ Skills helps the user inspect and manage local Skill folders used by supported A
 
 The module focuses on local files the user already has: shared Skills and tool-specific Skill directories. It is not a remote catalog or package manager.
 
-The shared Skill directory is `~/.agents/skills/`. This is a community-used user-level Agent Skills directory for Skills that can be reused across compatible local AI coding tools.
+The shared Skill directory is `~/.agents/skills/`. This is a commonly used user-level Agent Skills directory for Skills that can be reused across compatible local AI coding tools.
 
 ## Product Functions
 

@@ -1,5 +1,5 @@
 <script>
-  // Purpose: Community Skill detail view for shared-directory and tool-directory operations.
+  // Purpose: Skill detail view for shared-directory and tool-directory operations.
   import { tick, untrack } from "svelte";
   import { AlertCircle, Blocks, X, Pencil, Trash2, Search } from "lucide-svelte";
   import ConfirmDialog from "$lib/shared/components/ConfirmDialog.svelte";

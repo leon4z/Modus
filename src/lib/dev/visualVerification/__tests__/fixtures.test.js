@@ -70,7 +70,7 @@ describe("visual verification fixtures", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("provides current Community file-workspace visual states without custom rules", async () => {
+  it("provides current file-workspace visual states without custom rules", async () => {
     window.history.replaceState({}, "", "/?visual=1&view=rules&state=rules-tool-directory");
 
     const tools = await getVisualInvokeResponse("list_tools");

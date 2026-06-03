@@ -3,7 +3,7 @@
   import { activeView } from "$lib/features/tools/index.js";
   import { appUpdateAvailable } from "$lib/features/appUpdates/index.js";
   import { t } from "$lib/shared/i18n/index.js";
-  import { ScrollText, Blocks, Settings2, PlugZap, Settings, Orbit, LayoutDashboard } from "lucide-svelte";
+  import { ScrollText, Blocks, Settings2, PlugZap, Settings, LayoutDashboard } from "lucide-svelte";
 
   let currentView = $derived($activeView);
 
@@ -69,13 +69,6 @@
   style:width={collapsed ? `${SIDEBAR_W_COLLAPSED}px` : `${sidebarWidth}px`}
 >
   {#if !collapsed}
-    <div class="logo" data-tauri-drag-region>
-      <span class="logo-icon"><Orbit size={20} strokeWidth={2.5}/></span>
-      <div class="logo-copy">
-        <div class="logo-text">Modus</div>
-      </div>
-    </div>
-
     <div class="nav-section">
       <button class="nav-item" class:active={currentView === 'dashboard'} onclick={() => setView('dashboard')} aria-label={$t('sidebar.dashboard')}>
         <LayoutDashboard size={16} strokeWidth={1.8} /> <span class="nav-label">{$t('sidebar.dashboard')}</span>
@@ -152,11 +145,6 @@
   .sidebar.collapsed .sidebar-resize-handle {
     display: none;
   }
-  .logo { display: flex; align-items: center; gap: 10px; padding: 4px 8px; margin-bottom: 28px; background: transparent; width: 100%; text-align: left; }
-  .logo-icon { color: var(--color-text-main); opacity: 0.9; }
-  .logo-copy { min-width: 0; flex: 1 1 auto; text-align: left; }
-  .logo-text { font-size: 14px; font-weight: 600; color: var(--color-text-main); font-family: "Archivo", sans-serif; letter-spacing: -0.3px; }
-  .sidebar.collapsed .logo,
   .sidebar.collapsed .nav-section,
   .sidebar.collapsed .nav-bottom {
     display: none;
@@ -169,7 +157,7 @@
   .nav-item.active { background: var(--sidebar-item-active); border-color: transparent; opacity: var(--sidebar-item-active-opacity); font-weight: 600; }
   .nav-item { -webkit-app-region: no-drag; }
   .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nav-update-tag { margin-left: auto; max-width: 56px; padding: 1px 6px; border-radius: 999px; background: rgba(59, 130, 246, 0.12); color: #2563eb; font-size: 10px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav-update-tag { margin-left: auto; max-width: 56px; padding: 1px 6px; border-radius: 999px; background: rgba(245, 158, 11, 0.12); color: #f59e0b; font-size: 10px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nav-bottom { margin-top: auto; padding-top: 14px; }
 
   @media (prefers-reduced-motion: reduce) {

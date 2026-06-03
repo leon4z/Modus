@@ -63,6 +63,8 @@ pub struct AppUpdateState {
     pub last_failure_summary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_update: Option<AppAvailableUpdate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped_update_version: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]

@@ -16,6 +16,10 @@ export async function installAppUpdate() {
   return invoke("install_app_update");
 }
 
+export async function skipAppUpdate() {
+  return invoke("skip_app_update");
+}
+
 export async function restartAppForUpdate() {
   return invoke("restart_app_for_update");
 }

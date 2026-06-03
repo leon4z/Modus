@@ -1,4 +1,4 @@
-// Purpose: Shared frontend interpretation rules for Community Skill file operations.
+// Purpose: Shared frontend interpretation rules for local Skill file operations.
 
 /**
  * @param {string | null | undefined} status
@@ -200,7 +200,7 @@ function isUsefulConfirmationItem(item) {
 }
 
 /**
- * Builds the grouped confirmation view model used by Community Skill
+ * Builds the grouped confirmation view model used by local Skill
  * file-changing confirmation surfaces.
  *
  * @param {any} preview

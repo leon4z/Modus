@@ -5,6 +5,8 @@ import {
   resolveEffectiveLanguage,
   resolveSystemLanguage,
 } from "$lib/shared/i18n/index.js";
+import en from "$lib/shared/i18n/en.json";
+import zh from "$lib/shared/i18n/zh.json";
 
 describe("i18n language preference", () => {
   it("normalizes saved language preferences", () => {
@@ -26,5 +28,10 @@ describe("i18n language preference", () => {
     expect(resolveEffectiveLanguage("en")).toBe("en");
     expect(resolveEffectiveLanguage("system")).toBe("en");
     vi.unstubAllGlobals();
+  });
+
+  it("localizes the Skills page title", () => {
+    expect(en["skills.title"]).toBe("Skills");
+    expect(zh["skills.title"]).toBe("技能");
   });
 });

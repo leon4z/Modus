@@ -4,7 +4,7 @@
 - Source-of-Truth: true
 - Type: index
 
-This directory contains the current public documentation set for the Modus Community mainline.
+This directory contains the current public documentation set for Modus.
 
 ## Documents
 
@@ -18,6 +18,6 @@ This directory contains the current public documentation set for the Modus Commu
 
 ## Scope
 
-Public docs describe the current Community/free product surface and should only document workflows that are available in this mainline.
+Public docs describe the current product surface and should only document workflows that are available in this mainline.
 
 The project entry point is [README.md](../README.md).

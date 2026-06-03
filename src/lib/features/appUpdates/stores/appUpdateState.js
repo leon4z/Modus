@@ -5,6 +5,7 @@ import {
   getAppUpdateState,
   installAppUpdate,
   restartAppForUpdate,
+  skipAppUpdate,
 } from "$lib/features/appUpdates/api/appUpdates.js";
 
 const DEFAULT_STATE = {
@@ -19,6 +20,9 @@ const DEFAULT_STATE = {
   lastFailureAt: null,
   lastFailureSummary: null,
 };
+
+const LOCAL_TRANSIENT_STATUSES = new Set(["downloading", "installing"]);
+const NON_ACTIONABLE_AVAILABLE_STATUSES = new Set(["downloading", "installing", "restart_needed", "skipped"]);
 
 /** @param {any} raw */
 export function normalizeAppUpdateState(raw) {
@@ -38,7 +42,7 @@ export const appUpdateState = writable(normalizeAppUpdateState(null));
 
 export const appUpdateAvailable = derived(
   appUpdateState,
-  ($state) => Boolean($state?.availableUpdate?.version)
+  ($state) => Boolean($state?.availableUpdate?.version) && !NON_ACTIONABLE_AVAILABLE_STATUSES.has($state.status)
 );
 
 /** @param {unknown} error */
@@ -51,8 +55,18 @@ function errorMessage(error) {
 
 export async function loadAppUpdateState() {
   const next = normalizeAppUpdateState(await getAppUpdateState());
+  const current = get(appUpdateState);
+  if (shouldKeepLocalAppUpdateState(current, next)) {
+    return current;
+  }
   appUpdateState.set(next);
   return next;
+}
+
+/** @param {any} current @param {any} next */
+function shouldKeepLocalAppUpdateState(current, next) {
+  if (LOCAL_TRANSIENT_STATUSES.has(current?.status)) return true;
+  return current?.status === "restart_needed";
 }
 
 /**
@@ -60,12 +74,23 @@ export async function loadAppUpdateState() {
  */
 export async function runAppUpdateCheck(reason) {
   const current = get(appUpdateState);
+  const shouldRestoreRestartNeeded = current.status === "restart_needed";
   appUpdateState.set({ ...current, status: "checking", lastFailureSummary: null });
   try {
     const next = normalizeAppUpdateState(await checkAppUpdate(reason));
-    appUpdateState.set(next);
-    return next;
+    const resolved = shouldRestoreRestartNeeded ? restoreRestartNeededState(current, next) : next;
+    appUpdateState.set(resolved);
+    return resolved;
   } catch (error) {
+    if (shouldRestoreRestartNeeded) {
+      const restored = {
+        ...current,
+        status: "restart_needed",
+        lastFailureSummary: errorMessage(error),
+      };
+      appUpdateState.set(restored);
+      return restored;
+    }
     const failed = {
       ...get(appUpdateState),
       status: "failed",
@@ -74,6 +99,16 @@ export async function runAppUpdateCheck(reason) {
     appUpdateState.set(failed);
     return failed;
   }
+}
+
+/** @param {any} current @param {any} next */
+function restoreRestartNeededState(current, next) {
+  return {
+    ...next,
+    status: "restart_needed",
+    availableUpdate: current.availableUpdate || next.availableUpdate || null,
+    lastFailureSummary: next.lastFailureSummary || null,
+  };
 }
 
 export async function installAvailableAppUpdate() {
@@ -102,12 +137,22 @@ export async function installAvailableAppUpdate() {
   }
 }
 
-export function postponeAvailableAppUpdate() {
+export async function skipAvailableAppUpdate() {
   const current = get(appUpdateState);
   if (!current.availableUpdate) return current;
-  const next = { ...current, status: "postponed" };
-  appUpdateState.set(next);
-  return next;
+  try {
+    const next = normalizeAppUpdateState(await skipAppUpdate());
+    appUpdateState.set(next);
+    return next;
+  } catch (error) {
+    const failed = {
+      ...get(appUpdateState),
+      status: "failed",
+      lastFailureSummary: errorMessage(error),
+    };
+    appUpdateState.set(failed);
+    return failed;
+  }
 }
 
 export async function restartIntoAppUpdate() {

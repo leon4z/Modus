@@ -137,7 +137,7 @@ function installLocalStorageStub(seed = {}) {
   return storage;
 }
 
-describe("AppShell Community navigation", () => {
+describe("AppShell primary navigation", () => {
   function defaultAppUpdateState(overrides = {}) {
     return {
       status: "idle",
@@ -187,9 +187,8 @@ describe("AppShell Community navigation", () => {
     render(AppShell);
 
     await waitFor(() => {
-      expect(screen.getByText("Modus")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Project" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Pro|Upgrade|Paid/i })).not.toBeInTheDocument();
     });
 
     await waitFor(() => {
@@ -209,7 +208,7 @@ describe("AppShell Community navigation", () => {
     render(AppShell);
 
     await waitFor(() => {
-      expect(screen.getByText("Modus")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
       expect(appUpdateMocks.loadAppUpdateState).toHaveBeenCalled();
     });
     await waitFor(() => {
@@ -505,7 +504,7 @@ describe("AppShell Community navigation", () => {
     render(AppShell);
 
     await waitFor(() => {
-      expect(screen.getByText("Modus")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
     });
     expect(screen.queryByText("New Tools Detected")).not.toBeInTheDocument();
 
@@ -605,7 +604,7 @@ describe("AppShell Community navigation", () => {
     render(AppShell);
 
     await waitFor(() => {
-      expect(screen.getByText("Modus")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
     });
     expect(screen.queryByText("New Tools Detected")).not.toBeInTheDocument();
     expect(screen.queryByText("Trae Solo CN")).not.toBeInTheDocument();

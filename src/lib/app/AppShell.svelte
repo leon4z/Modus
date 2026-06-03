@@ -13,7 +13,7 @@
   import McpPanel from "$lib/features/mcp/components/McpPanel.svelte";
   import SettingsModule from "$lib/features/settings/components/SettingsModule.svelte";
   import DesignPreview from "$lib/dev/components/DesignPreview.svelte";
-  import { normalizeCommunityView } from "$lib/app/edition.js";
+  import { normalizePrimaryView } from "$lib/app/views.js";
   import { loadTools, activeView, activeToolId, detectedTools, managedTools, managedToolIds, appInitialized, pendingSubTab, theme } from "$lib/features/tools/index.js";
   import {
     DEFAULT_SKILL_INVENTORY_TTL_MS,
@@ -105,7 +105,7 @@
       }
 
       if (isVisualVerificationMode()) {
-        activeView.set(normalizeCommunityView(getVisualVerificationView()));
+        activeView.set(normalizePrimaryView(getVisualVerificationView()));
         activeToolId.set(getVisualVerificationToolId());
       }
 
@@ -122,7 +122,7 @@
       const loadedTools = await loadTools();
       if (cancelled) return;
       if (isVisualVerificationMode()) {
-        activeView.set(normalizeCommunityView(getVisualVerificationView()));
+        activeView.set(normalizePrimaryView(getVisualVerificationView()));
         activeToolId.set(getVisualVerificationToolId());
       }
       const initialized = await isInitialized();
@@ -344,7 +344,7 @@
   }
 
   $effect(() => {
-    const normalizedView = normalizeCommunityView(currentView);
+    const normalizedView = normalizePrimaryView(currentView);
     if (normalizedView !== currentView) {
       activeView.set(normalizedView);
       return;

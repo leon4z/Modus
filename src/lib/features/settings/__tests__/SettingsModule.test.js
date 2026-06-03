@@ -19,9 +19,9 @@ const skillInventoryMocks = vi.hoisted(() => ({
 const appUpdateMocks = vi.hoisted(() => ({
   installAvailableAppUpdate: vi.fn(),
   loadAppUpdateState: vi.fn(),
-  postponeAvailableAppUpdate: vi.fn(),
   restartIntoAppUpdate: vi.fn(),
   runAppUpdateCheck: vi.fn(),
+  skipAvailableAppUpdate: vi.fn(),
 }));
 
 const apiMocks = vi.hoisted(() => ({
@@ -87,8 +87,8 @@ vi.mock("$lib/features/appUpdates/index.js", async () => {
     appUpdateState.set(next);
     return next;
   });
-  appUpdateMocks.postponeAvailableAppUpdate.mockImplementation(() => {
-    const next = { ...get(appUpdateState), status: "postponed" };
+  appUpdateMocks.skipAvailableAppUpdate.mockImplementation(async () => {
+    const next = { ...get(appUpdateState), status: "skipped", availableUpdate: null };
     appUpdateState.set(next);
     return next;
   });
@@ -99,9 +99,9 @@ vi.mock("$lib/features/appUpdates/index.js", async () => {
     appUpdateState,
     installAvailableAppUpdate: appUpdateMocks.installAvailableAppUpdate,
     loadAppUpdateState: appUpdateMocks.loadAppUpdateState,
-    postponeAvailableAppUpdate: appUpdateMocks.postponeAvailableAppUpdate,
     restartIntoAppUpdate: appUpdateMocks.restartIntoAppUpdate,
     runAppUpdateCheck: appUpdateMocks.runAppUpdateCheck,
+    skipAvailableAppUpdate: appUpdateMocks.skipAvailableAppUpdate,
   };
 });
 vi.mock("$lib/features/tools/index.js", async (importOriginal) => {
@@ -390,7 +390,7 @@ describe("SettingsModule", () => {
     expect(screen.queryByText("Skill Source Handling")).not.toBeInTheDocument();
   });
 
-  it("shows Modus About copy without paid-edition actions", async () => {
+  it("shows Modus About copy without account or license actions", async () => {
     render(SettingsModule);
 
     await waitFor(() => {
@@ -398,7 +398,7 @@ describe("SettingsModule", () => {
     });
 
     expect(screen.getByText("About Modus")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Pro|Upgrade|Paid|License|Account/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /License|Account/i })).not.toBeInTheDocument();
   });
 
   it("runs a manual app update check from About", async () => {
@@ -408,6 +408,13 @@ describe("SettingsModule", () => {
       expect(apiMocks.getToolPaths).toHaveBeenCalled();
     });
 
+    const aboutRow = screen.getByText("About Modus").closest(".settings-list-row");
+    expect(within(aboutRow).getAllByRole("button").map((button) => button.textContent.trim())).toEqual([
+      "GitHub",
+      "Check for Updates",
+    ]);
+    expect(within(aboutRow).getByRole("button", { name: "Check for Updates" }).querySelector("svg")).toBeNull();
+
     await fireEvent.click(screen.getByRole("button", { name: "Check for Updates" }));
 
     await waitFor(() => {
@@ -416,7 +423,7 @@ describe("SettingsModule", () => {
     expect(screen.getByText("Modus is up to date.")).toBeInTheDocument();
   });
 
-  it("shows available app updates with postpone, install, and restart actions", async () => {
+  it("shows available app updates with skip, install, and restart actions", async () => {
     appUpdateState.set(defaultAppUpdateState({
       status: "available",
       availableUpdate: {
@@ -433,16 +440,41 @@ describe("SettingsModule", () => {
       expect(screen.getByText("Version 0.2.0 is available on the Release channel.")).toBeInTheDocument();
     });
 
-    await fireEvent.click(screen.getByRole("button", { name: "Later" }));
-    expect(appUpdateMocks.postponeAvailableAppUpdate).toHaveBeenCalled();
-    expect(screen.getByText("Version 0.2.0 is still available on the Release channel.")).toBeInTheDocument();
+    const aboutRow = screen.getByText("About Modus").closest(".settings-list-row");
+    expect(screen.getByTestId("settings-update-status")).toHaveClass("settings-update-status--available");
+    expect(within(aboutRow).getAllByRole("button").map((button) => button.textContent.trim())).toEqual([
+      "GitHub",
+      "Check for Updates",
+      "Skip",
+      "Install Update",
+    ]);
+    expect(within(aboutRow).getByRole("button", { name: "Check for Updates" }).querySelector("svg")).toBeNull();
+    expect(within(aboutRow).getByRole("button", { name: "Install Update" }).querySelector("svg")).toBeNull();
 
+    await fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(appUpdateMocks.skipAvailableAppUpdate).toHaveBeenCalled();
+    expect(screen.getByText("Skipped this update version.")).toBeInTheDocument();
+
+    appUpdateState.set(defaultAppUpdateState({
+      status: "available",
+      availableUpdate: {
+        version: "0.2.0",
+        currentVersion: "0.1.0",
+        channel: "stable",
+        date: null,
+        body: null,
+      },
+    }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Install Update" })).toBeInTheDocument();
+    });
     await fireEvent.click(screen.getByRole("button", { name: "Install Update" }));
     expect(appUpdateMocks.installAvailableAppUpdate).toHaveBeenCalled();
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Restart" })).toBeInTheDocument();
     });
+    expect(screen.getByTestId("settings-update-status")).toHaveClass("settings-update-status--restart");
     await fireEvent.click(screen.getByRole("button", { name: "Restart" }));
     expect(appUpdateMocks.restartIntoAppUpdate).toHaveBeenCalled();
   });

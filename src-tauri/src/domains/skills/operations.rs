@@ -1342,7 +1342,7 @@ fn install_skill_with_registry_and_generic_dir(
             ACTION_INSTALL,
             skill_name,
             &subject,
-            format!("Unsupported Community install mode: {}", mode),
+            format!("Unsupported Skill install mode: {}", mode),
         );
     }
 
@@ -1380,7 +1380,7 @@ fn install_skill_with_registry_and_generic_dir(
             ACTION_INSTALL,
             skill_name,
             &subject,
-            "source_path is required for Community Skill install".to_string(),
+            "source_path is required for Skill install".to_string(),
         );
     };
     if !is_valid_skill_dir(&source_dir) {

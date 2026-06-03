@@ -25,6 +25,14 @@ pub async fn install_app_update(
 }
 
 #[tauri::command]
+pub fn skip_app_update(
+    app: AppHandle,
+    pending_update: State<'_, PendingAppUpdate>,
+) -> Result<AppUpdateViewState, String> {
+    skip_app_update_domain(app, pending_update)
+}
+
+#[tauri::command]
 pub fn restart_app_for_update(app: AppHandle) {
     restart_app_for_update_domain(app);
 }

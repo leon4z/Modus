@@ -185,7 +185,7 @@ pub(crate) fn reject_reason(code: &str, message: &str, raw: Option<String>) -> R
 }
 
 pub(crate) fn classify_reject_reason(raw: &str) -> Option<RejectReason> {
-    let reason = if raw == "source_path is required for Community Skill install" {
+    let reason = if raw == "source_path is required for Skill install" {
         reject_reason(
             REASON_MISSING_SOURCE,
             "复制操作缺少来源目录",
@@ -227,9 +227,9 @@ pub(crate) fn classify_reject_reason(raw: &str) -> Option<RejectReason> {
             "存在多个同名来源，请先选择具体路径",
             Some(raw.to_string()),
         )
-    } else if raw.starts_with("Unsupported Community install mode: ") {
+    } else if raw.starts_with("Unsupported Skill install mode: ") {
         let mode = raw
-            .trim_start_matches("Unsupported Community install mode: ")
+            .trim_start_matches("Unsupported Skill install mode: ")
             .trim();
         reject_reason(
             REASON_UNKNOWN,

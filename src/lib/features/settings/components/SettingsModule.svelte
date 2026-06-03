@@ -16,7 +16,6 @@
     Folder,
     Pencil,
     Plus,
-    RefreshCw,
     RotateCcw,
     Settings2,
     Wrench,
@@ -28,9 +27,9 @@
     appUpdateState,
     installAvailableAppUpdate,
     loadAppUpdateState,
-    postponeAvailableAppUpdate,
     restartIntoAppUpdate,
     runAppUpdateCheck,
+    skipAvailableAppUpdate,
   } from "$lib/features/appUpdates/index.js";
   import { applyLanguagePreference, languagePreference, t } from "$lib/shared/i18n/index.js";
   import { getVisualVerificationState, isVisualVerificationMode } from "$lib/dev/visualVerification/fixtures.js";
@@ -133,7 +132,7 @@
   let showRuntimeDiagnostic = $derived(runtimeInfoLoadFailed && isFrontendDevBuild());
   let appUpdateBusy = $derived($appUpdateState.status === "checking" || $appUpdateState.status === "downloading" || $appUpdateState.status === "installing");
   let showInstallUpdateAction = $derived(Boolean($appUpdateState.availableUpdate?.version) && !appUpdateBusy && $appUpdateState.status !== "restart_needed");
-  let showPostponeUpdateAction = $derived(showInstallUpdateAction && $appUpdateState.status !== "postponed");
+  let showSkipUpdateAction = $derived(showInstallUpdateAction);
   let showRestartUpdateAction = $derived($appUpdateState.status === "restart_needed");
 
   onMount(() => {
@@ -254,6 +253,7 @@
     if (!state.canCheck || state.status === "disabled") return $t("settings.update.status_disabled");
     if (state.status === "checking") return $t("settings.update.status_checking");
     if (state.status === "current") return $t("settings.update.status_current");
+    if (state.status === "skipped") return $t("settings.update.status_skipped");
     if (state.status === "downloading") return $t("settings.update.status_downloading");
     if (state.status === "installing") return $t("settings.update.status_installing");
     if (state.status === "restart_needed") return $t("settings.update.status_restart_needed");
@@ -261,8 +261,7 @@
       return $t("settings.update.status_failed", { err: state.lastFailureSummary || $t("settings.update.failure_unknown") });
     }
     if (update?.version) {
-      const key = state.status === "postponed" ? "settings.update.status_postponed" : "settings.update.status_available";
-      return $t(key, {
+      return $t("settings.update.status_available", {
         version: update.version,
         channel: appUpdateChannelLabel(update.channel || state.channel),
       });
@@ -273,9 +272,9 @@
   function appUpdateStatusTone() {
     const status = $appUpdateState.status;
     if (!$appUpdateState.canCheck || status === "disabled") return "muted";
-    if (status === "available" || status === "postponed" || $appUpdateState.availableUpdate?.version) return "available";
     if (status === "failed") return "failed";
     if (status === "restart_needed") return "restart";
+    if (status === "available" || $appUpdateState.availableUpdate?.version) return "available";
     return "muted";
   }
 
@@ -1760,32 +1759,31 @@
               </div>
             </div>
             <div class="settings-row-right">
+              <button type="button" class="settings-action-btn">GitHub</button>
               <button
                 type="button"
                 class="settings-action-btn"
                 disabled={!$appUpdateState.canCheck || appUpdateBusy}
                 onclick={manualAppUpdateCheck}
               >
-                <RefreshCw size={13} />
                 {$appUpdateState.status === "checking" ? $t("settings.update.checking") : $t("settings.action.check_update")}
               </button>
+              {#if showSkipUpdateAction}
+                <button
+                  type="button"
+                  class="settings-action-btn"
+                  onclick={skipAvailableAppUpdate}
+                >
+                  {$t("settings.update.skip")}
+                </button>
+              {/if}
               {#if showInstallUpdateAction}
                 <button
                   type="button"
                   class="settings-action-btn primary"
                   onclick={installAppUpdateFromSettings}
                 >
-                  <Download size={13} />
                   {$appUpdateState.status === "downloading" || $appUpdateState.status === "installing" ? $t("settings.update.installing") : $t("settings.update.install")}
-                </button>
-              {/if}
-              {#if showPostponeUpdateAction}
-                <button
-                  type="button"
-                  class="settings-action-btn"
-                  onclick={postponeAvailableAppUpdate}
-                >
-                  {$t("settings.update.postpone")}
                 </button>
               {/if}
               {#if showRestartUpdateAction}
@@ -1794,11 +1792,9 @@
                   class="settings-action-btn primary"
                   onclick={restartForAppUpdate}
                 >
-                  <RotateCcw size={13} />
                   {$t("settings.update.restart")}
                 </button>
               {/if}
-              <button class="settings-action-btn">GitHub</button>
             </div>
           </div>
           <div class="settings-divider"></div>
@@ -2450,7 +2446,7 @@
   .settings-runtime-badge { max-width: 140px; padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(59,130,246,0.35); background: rgba(59,130,246,0.08); color: #3b82f6; font-size: 10px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .settings-runtime-desc { color: var(--color-text-muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
   .settings-update-status { max-width: 560px; color: var(--color-text-muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
-  .settings-update-status--available { color: #2563eb; }
+  .settings-update-status--available { color: #f59e0b; }
   .settings-update-status--failed { color: #dc2626; }
   .settings-update-status--restart { color: #059669; }
   .settings-row-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

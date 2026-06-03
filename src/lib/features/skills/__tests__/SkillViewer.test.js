@@ -107,7 +107,7 @@ function expectedLocalDateTime(value) {
 const noSharedInstallWarning = "当前 Skill 没有共享目录来源，无法安装为共享目录链接。";
 const noDeployTargetWarning = "该工具没有可部署的 Skill 目录，无法安装共享目录。";
 
-describe("SkillViewer Community behavior", () => {
+describe("SkillViewer local-source behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invalidateSkillInventory();

@@ -3266,7 +3266,7 @@ describe("RulesModule managed state", () => {
     expect(screen.getByText("Global Rules")).toBeInTheDocument();
   });
 
-  it("uses two-cell Community navigation and keeps long tool inventories scrollable", async () => {
+  it("uses two-cell Rules navigation and keeps long tool inventories scrollable", async () => {
     managedRulesStateResponse = cleanState;
     toolStores.activeRulesTab.set("tool");
     toolStores.activeToolId.set("openclaw");
@@ -3314,7 +3314,7 @@ describe("RulesModule managed state", () => {
     expect(rulesSource).toContain("if (!canSaveRuleEditor) return;");
   });
 
-  it("does not expose custom rule creation in Community", async () => {
+  it("does not expose custom rule creation in the current Rules flow", async () => {
     managedRulesStateResponse = cleanState;
     toolStores.tools.set([
       { id: "codex", name: "Codex", detected: true, rule_sources: [] },

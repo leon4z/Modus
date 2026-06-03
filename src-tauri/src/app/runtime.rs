@@ -1,4 +1,4 @@
-// Purpose: Compose the desktop runtime and Community command registration.
+// Purpose: Compose the desktop runtime and desktop command registration.
 
 use crate::adapters::ToolRegistry;
 use crate::commands;
@@ -31,6 +31,7 @@ pub fn run() {
             commands::app_updates::get_app_update_state,
             commands::app_updates::check_app_update,
             commands::app_updates::install_app_update,
+            commands::app_updates::skip_app_update,
             commands::app_updates::restart_app_for_update,
             commands::tools::list_tools,
             commands::tools::refresh_tool,

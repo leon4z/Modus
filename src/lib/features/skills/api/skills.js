@@ -1,4 +1,4 @@
-// Purpose: Keep Community Skills inventory, file operations, and notes command wrappers in one frontend domain API.
+// Purpose: Keep Skills inventory, file operations, and notes command wrappers in one frontend domain API.
 import { invoke } from "$lib/shared/api/invoke.js";
 
 /**
@@ -84,7 +84,7 @@ export async function getAllSkillNotes() {
 /**
  * @param {string} skillName
  * @param {string} toolId
- * @param {string} mode - Community uses "symlink" for shared-directory install.
+ * @param {string} mode - Shared-directory install uses "symlink".
  * @param {string|null} sourcePath - absolute path to the source skill directory
  */
 export async function previewInstall(skillName, toolId, mode, sourcePath = null) {
@@ -94,7 +94,7 @@ export async function previewInstall(skillName, toolId, mode, sourcePath = null)
 /**
  * @param {string} skillName
  * @param {string} toolId
- * @param {string} mode - Community uses "symlink" for shared-directory install.
+ * @param {string} mode - Shared-directory install uses "symlink".
  * @param {string|null} sourcePath - absolute path to the source skill directory
  */
 export async function executeInstall(skillName, toolId, mode, sourcePath = null) {

@@ -40,7 +40,11 @@ pub fn pending_app_update_state() -> PendingAppUpdate {
 }
 
 pub fn get_app_update_state_domain(app_version: String) -> AppUpdateViewState {
-    view_state_from_persisted("idle", &load_current_app_update_state(&app_version), app_version)
+    view_state_from_persisted(
+        "idle",
+        &load_current_app_update_state(&app_version),
+        app_version,
+    )
 }
 
 pub async fn check_app_update_domain(
@@ -94,13 +98,45 @@ pub async fn install_app_update_domain(
         Ok(()) => {
             write_update_log("app_update_install", "ok", None);
             let persisted = load_current_app_update_state(&app_version);
-            Ok(view_state_from_persisted("restart_needed", &persisted, app_version))
+            Ok(view_state_from_persisted(
+                "restart_needed",
+                &persisted,
+                app_version,
+            ))
         }
         Err(error) => {
             write_update_failure("app_update_install", &error)?;
             Ok(get_app_update_state_with_status("failed", app_version))
         }
     }
+}
+
+pub fn skip_app_update_domain(
+    app: AppHandle,
+    pending_update: State<'_, PendingAppUpdate>,
+) -> Result<AppUpdateViewState, String> {
+    let app_version = app.package_info().version.to_string();
+    if !current_channel().can_check {
+        clear_pending_update(&pending_update)?;
+        return Ok(get_app_update_state_with_status("disabled", app_version));
+    }
+
+    let mut persisted = load_current_app_update_state(&app_version);
+    if let Some(available) = persisted.available_update.clone() {
+        persisted.skipped_update_version = Some(available.version);
+        persisted.available_update = None;
+        persisted.last_failure_at = None;
+        persisted.last_failure_summary = None;
+        persist_app_update_state(persisted.clone())?;
+        clear_pending_update(&pending_update)?;
+        write_update_log("app_update_skip", "ok", None);
+    }
+
+    Ok(view_state_from_persisted(
+        skip_app_update_status(&persisted),
+        &persisted,
+        app_version,
+    ))
 }
 
 pub fn restart_app_for_update_domain(app: AppHandle) {
@@ -112,71 +148,92 @@ async fn run_update_check(
     pending_update: &State<'_, PendingAppUpdate>,
     reason: CheckReason,
 ) -> Result<AppUpdateViewState, String> {
-        let app_version = app.package_info().version.to_string();
-        let channel = current_channel();
-        if !channel.can_check {
-            clear_pending_update(pending_update)?;
-            return Ok(get_app_update_state_with_status("disabled", app_version));
-        }
+    let app_version = app.package_info().version.to_string();
+    let channel = current_channel();
+    if !channel.can_check {
+        clear_pending_update(pending_update)?;
+        return Ok(get_app_update_state_with_status("disabled", app_version));
+    }
 
-        let mut persisted = load_current_app_update_state(&app_version);
-        if reason == CheckReason::Startup && !startup_check_due(&persisted, Utc::now()) {
-            return Ok(view_state_from_persisted("idle", &persisted, app_version));
-        }
+    let mut persisted = load_current_app_update_state(&app_version);
+    if reason == CheckReason::Startup && !startup_check_due(&persisted, Utc::now()) {
+        return Ok(view_state_from_persisted("idle", &persisted, app_version));
+    }
 
-        let now = Utc::now().to_rfc3339();
-        if reason == CheckReason::Startup {
-            persisted.last_startup_check_at = Some(now.clone());
-            persist_app_update_state(persisted.clone())?;
-        }
+    let now = Utc::now().to_rfc3339();
+    if reason == CheckReason::Startup {
+        persisted.last_startup_check_at = Some(now.clone());
+        persist_app_update_state(persisted.clone())?;
+    }
 
-        write_update_log("app_update_check", reason.as_log_result(), None);
+    write_update_log("app_update_check", reason.as_log_result(), None);
 
-        let endpoint = channel
-            .source
-            .clone()
-            .ok_or_else(|| "update source is unavailable".to_string())?;
-        let endpoint = tauri::Url::parse(&endpoint).map_err(|error| error.to_string())?;
-        let update = app
-            .updater_builder()
-            .endpoints(vec![endpoint])
-            .map_err(|error| error.to_string())?
-            .build()
-            .map_err(|error| error.to_string())?
-            .check()
-            .await
-            .map_err(|error| error.to_string());
+    let endpoint = channel
+        .source
+        .clone()
+        .ok_or_else(|| "update source is unavailable".to_string())?;
+    let endpoint = tauri::Url::parse(&endpoint).map_err(|error| error.to_string())?;
+    let update = app
+        .updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|error| error.to_string())?
+        .build()
+        .map_err(|error| error.to_string())?
+        .check()
+        .await
+        .map_err(|error| error.to_string());
 
-        match update {
-            Ok(Some(update)) => {
-                let available = update_metadata(&update, &channel.channel);
+    match update {
+        Ok(Some(update)) => {
+            let available = update_metadata(&update, &channel.channel);
+            persisted.last_successful_check_at = Some(Utc::now().to_rfc3339());
+            persisted.last_failure_at = None;
+            persisted.last_failure_summary = None;
+            if skipped_update_matches(&persisted, &available) {
+                persisted.available_update = None;
+                persist_app_update_state(persisted.clone())?;
+                clear_pending_update(pending_update)?;
+                write_update_log("app_update_check", "skipped", None);
+                Ok(view_state_from_persisted(
+                    "skipped",
+                    &persisted,
+                    app_version,
+                ))
+            } else {
+                persisted.skipped_update_version = None;
                 persisted.available_update = Some(available);
-                persisted.last_successful_check_at = Some(Utc::now().to_rfc3339());
-                persisted.last_failure_at = None;
-                persisted.last_failure_summary = None;
                 persist_app_update_state(persisted.clone())?;
                 replace_pending_update(pending_update, Some(update))?;
                 write_update_log("app_update_check", "available", None);
-                Ok(view_state_from_persisted("available", &persisted, app_version))
-            }
-            Ok(None) => {
-                persisted.available_update = None;
-                persisted.last_successful_check_at = Some(Utc::now().to_rfc3339());
-                persisted.last_failure_at = None;
-                persisted.last_failure_summary = None;
-                persist_app_update_state(persisted.clone())?;
-                clear_pending_update(pending_update)?;
-                write_update_log("app_update_check", "current", None);
-                Ok(view_state_from_persisted("current", &persisted, app_version))
-            }
-            Err(error) => {
-                persisted.last_failure_at = Some(Utc::now().to_rfc3339());
-                persisted.last_failure_summary = Some(error.clone());
-                persist_app_update_state(persisted.clone())?;
-                write_update_log("app_update_check", "failed", Some(error));
-                Ok(view_state_from_persisted("failed", &persisted, app_version))
+                Ok(view_state_from_persisted(
+                    "available",
+                    &persisted,
+                    app_version,
+                ))
             }
         }
+        Ok(None) => {
+            persisted.available_update = None;
+            persisted.last_successful_check_at = Some(Utc::now().to_rfc3339());
+            persisted.last_failure_at = None;
+            persisted.last_failure_summary = None;
+            persist_app_update_state(persisted.clone())?;
+            clear_pending_update(pending_update)?;
+            write_update_log("app_update_check", "current", None);
+            Ok(view_state_from_persisted(
+                "current",
+                &persisted,
+                app_version,
+            ))
+        }
+        Err(error) => {
+            persisted.last_failure_at = Some(Utc::now().to_rfc3339());
+            persisted.last_failure_summary = Some(error.clone());
+            persist_app_update_state(persisted.clone())?;
+            write_update_log("app_update_check", "failed", Some(error));
+            Ok(view_state_from_persisted("failed", &persisted, app_version))
+        }
+    }
 }
 
 fn current_channel() -> ChannelInfo {
@@ -224,7 +281,11 @@ fn view_state_from_persisted(
 }
 
 fn get_app_update_state_with_status(status: &str, app_version: String) -> AppUpdateViewState {
-    view_state_from_persisted(status, &load_current_app_update_state(&app_version), app_version)
+    view_state_from_persisted(
+        status,
+        &load_current_app_update_state(&app_version),
+        app_version,
+    )
 }
 
 fn load_current_app_update_state(app_version: &str) -> AppUpdateState {
@@ -236,34 +297,57 @@ fn load_current_app_update_state(app_version: &str) -> AppUpdateState {
 }
 
 fn prune_installed_available_update(state: &mut AppUpdateState, app_version: &str) -> bool {
-    let Some(available) = state.available_update.as_ref() else {
-        return false;
-    };
+    let mut changed = false;
 
-    if !available_update_is_installed_or_older(available, app_version) {
-        return false;
+    if let Some(available) = state.available_update.as_ref() {
+        if available_update_is_installed_or_older(available, app_version) {
+            state.available_update = None;
+            changed = true;
+        }
     }
 
-    state.available_update = None;
-    true
+    if let Some(skipped_version) = state.skipped_update_version.as_deref() {
+        if version_is_installed_or_older(skipped_version, app_version) {
+            state.skipped_update_version = None;
+            changed = true;
+        }
+    }
+
+    changed
 }
 
 fn available_update_is_installed_or_older(
     available: &AppAvailableUpdate,
     app_version: &str,
 ) -> bool {
-    if available.version == app_version {
+    version_is_installed_or_older(&available.version, app_version)
+}
+
+fn version_is_installed_or_older(candidate_version: &str, app_version: &str) -> bool {
+    if candidate_version == app_version {
         return true;
     }
 
     let Ok(current_version) = Version::parse(app_version) else {
         return false;
     };
-    let Ok(available_version) = Version::parse(&available.version) else {
+    let Ok(candidate_version) = Version::parse(candidate_version) else {
         return false;
     };
 
-    current_version >= available_version
+    current_version >= candidate_version
+}
+
+fn skipped_update_matches(state: &AppUpdateState, available: &AppAvailableUpdate) -> bool {
+    state.skipped_update_version.as_deref() == Some(available.version.as_str())
+}
+
+fn skip_app_update_status(state: &AppUpdateState) -> &'static str {
+    if state.skipped_update_version.is_some() {
+        "skipped"
+    } else {
+        "current"
+    }
 }
 
 fn persist_app_update_state(next: AppUpdateState) -> Result<(), String> {
@@ -385,7 +469,10 @@ mod tests {
         assert_eq!(test.channel, "test");
         assert_ne!(stable.source, test.source);
         assert!(stable.source.unwrap().contains("releases/latest/download"));
-        assert!(test.source.unwrap().contains("releases/download/modus-test"));
+        assert!(test
+            .source
+            .unwrap()
+            .contains("releases/download/modus-test"));
         assert!(disabled.source.is_none());
     }
 
@@ -447,6 +534,17 @@ mod tests {
     }
 
     #[test]
+    fn installed_skipped_update_version_is_pruned_from_view_state() {
+        let mut state = AppUpdateState {
+            skipped_update_version: Some("0.1.1-test.1".to_string()),
+            ..AppUpdateState::default()
+        };
+
+        assert!(prune_installed_available_update(&mut state, "0.1.1-test.1"));
+        assert!(state.skipped_update_version.is_none());
+    }
+
+    #[test]
     fn newer_available_update_is_retained_in_view_state() {
         let mut state = AppUpdateState {
             available_update: Some(AppAvailableUpdate {
@@ -461,5 +559,44 @@ mod tests {
 
         assert!(!prune_installed_available_update(&mut state, "0.1.1"));
         assert_eq!(state.available_update.unwrap().version, "0.1.2");
+    }
+
+    #[test]
+    fn skipped_update_matches_only_the_same_available_version() {
+        let mut state = AppUpdateState {
+            skipped_update_version: Some("0.1.2".to_string()),
+            ..AppUpdateState::default()
+        };
+        let skipped = AppAvailableUpdate {
+            version: "0.1.2".to_string(),
+            current_version: "0.1.1".to_string(),
+            channel: "stable".to_string(),
+            date: None,
+            body: None,
+        };
+        let newer = AppAvailableUpdate {
+            version: "0.1.3".to_string(),
+            current_version: "0.1.1".to_string(),
+            channel: "stable".to_string(),
+            date: None,
+            body: None,
+        };
+
+        assert!(skipped_update_matches(&state, &skipped));
+        assert!(!skipped_update_matches(&state, &newer));
+        assert!(!prune_installed_available_update(&mut state, "0.1.1"));
+        assert_eq!(state.skipped_update_version.as_deref(), Some("0.1.2"));
+    }
+
+    #[test]
+    fn repeated_skip_status_stays_skipped_while_version_is_remembered() {
+        let skipped = AppUpdateState {
+            skipped_update_version: Some("0.1.2".to_string()),
+            ..AppUpdateState::default()
+        };
+        let current = AppUpdateState::default();
+
+        assert_eq!(skip_app_update_status(&skipped), "skipped");
+        assert_eq!(skip_app_update_status(&current), "current");
     }
 }

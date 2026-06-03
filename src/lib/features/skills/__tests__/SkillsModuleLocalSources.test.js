@@ -77,7 +77,7 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
-describe("SkillsModule Community behavior", () => {
+describe("SkillsModule local-source behavior", () => {
   beforeEach(() => {
     locale.set("en");
     toolStoreMocks.loadTools.mockResolvedValue([]);
@@ -136,6 +136,17 @@ describe("SkillsModule Community behavior", () => {
     expect(screen.queryByLabelText("Skill performance diagnostics")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Module performance diagnostics")).not.toBeInTheDocument();
     expect(loggingApiMocks.writeModulePerformanceLog).not.toHaveBeenCalled();
+  });
+
+  it("localizes the page title in Chinese", async () => {
+    locale.set("zh");
+
+    render(SkillsModule);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "技能" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: "Skills" })).not.toBeInTheDocument();
   });
 
   it("shows opt-in performance diagnostics with request metrics", async () => {

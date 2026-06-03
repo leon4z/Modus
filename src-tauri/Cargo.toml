@@ -2,7 +2,7 @@
 name = "modus"
 version = "0.1.0"
 default-run = "Modus"
-description = "A community desktop app for managing local AI coding tool rules, skills, configs, and MCP settings."
+description = "A macOS desktop app for managing local AI coding tool rules, skills, configs, and MCP settings."
 authors = ["you"]
 edition = "2021"
 

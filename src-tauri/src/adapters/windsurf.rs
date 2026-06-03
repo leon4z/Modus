@@ -60,7 +60,7 @@ fn capabilities(home: &Path) -> Vec<DeclaredCapability> {
             home.join(".codeium/windsurf/skills"),
             "Skills",
             directory_diagnostics(),
-            "Windsurf discovers user-level Skills from ~/.codeium/windsurf/skills. Workspace .windsurf/skills remains project-scoped and outside Community global scope.",
+            "Windsurf discovers user-level Skills from ~/.codeium/windsurf/skills. Workspace .windsurf/skills remains project-scoped and outside global scope.",
             ToolCapabilitySourceConfidence::CertifiedLocalProductBehavior,
             runtime_action_gates(
                 "Windsurf global user Skills",
