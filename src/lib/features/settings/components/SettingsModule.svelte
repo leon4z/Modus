@@ -80,6 +80,9 @@
     summarizeRuleSourceState,
   } from "$lib/features/tools/index.js";
   import { invalidateSkillInventory } from "$lib/features/skills/index.js";
+
+  const PROJECT_GITHUB_URL = "https://github.com/leon4z/Modus";
+
   /** @type {Record<string, any>} */
   let settingsToolPaths = $state({});
   /** @type {Record<string, string>} */
@@ -281,6 +284,20 @@
   async function manualAppUpdateCheck() {
     if (!$appUpdateState.canCheck || appUpdateBusy) return;
     await runAppUpdateCheck("manual");
+  }
+
+  async function openProjectGitHub() {
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(PROJECT_GITHUB_URL);
+      logSettingsEvent({ action: "settings_project_github_open", result: "ok" });
+    } catch (/** @type {any} */ e) {
+      logSettingsEvent({ action: "settings_project_github_open", result: "failed", error: e });
+      settingsMsg = $t("settings.github.open_failed", { err: e });
+      setTimeout(() => {
+        settingsMsg = "";
+      }, 4000);
+    }
   }
 
   async function installAppUpdateFromSettings() {
@@ -1759,7 +1776,7 @@
               </div>
             </div>
             <div class="settings-row-right">
-              <button type="button" class="settings-action-btn">GitHub</button>
+              <button type="button" class="settings-action-btn" onclick={openProjectGitHub}>GitHub</button>
               <button
                 type="button"
                 class="settings-action-btn"

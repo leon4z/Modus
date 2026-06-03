@@ -350,6 +350,7 @@
   "settings.title.about": "关于 Modus",
   "settings.desc.version": "当前版本：{version}",
   "settings.action.check_update": "检查更新",
+  "settings.github.open_failed": "无法打开 GitHub：{err}",
   "settings.update.checking": "检查中...",
   "settings.update.install": "安装更新",
   "settings.update.installing": "安装中...",

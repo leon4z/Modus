@@ -4,6 +4,10 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.3 - 2026-06-03
+
+- Made the Settings GitHub action open the public Modus project page.
+
 ## 1.0.2 - 2026-06-03
 
 - Removed the app icon's outer rim highlight so Finder, Dock, and app preview surfaces show a cleaner icon edge.

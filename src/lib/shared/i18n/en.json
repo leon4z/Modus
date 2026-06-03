@@ -350,6 +350,7 @@
   "settings.title.about": "About Modus",
   "settings.desc.version": "Current Version: {version}",
   "settings.action.check_update": "Check for Updates",
+  "settings.github.open_failed": "Failed to open GitHub: {err}",
   "settings.update.checking": "Checking...",
   "settings.update.install": "Install Update",
   "settings.update.installing": "Installing...",

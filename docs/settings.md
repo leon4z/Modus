@@ -19,6 +19,7 @@ The module is where the user changes how Modus behaves. It keeps app preferences
 - Opens local application log views.
 - Opens module performance diagnostic views when diagnostics are enabled.
 - Exports local logs for troubleshooting.
+- Opens the public project GitHub page from About.
 - Checks for application updates.
 - Shows install or restart actions when an application update is available.
 

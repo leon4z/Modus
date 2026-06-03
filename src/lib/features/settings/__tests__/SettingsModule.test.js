@@ -12,6 +12,10 @@ const dialogMocks = vi.hoisted(() => ({
   save: vi.fn(),
 }));
 
+const openerMocks = vi.hoisted(() => ({
+  openUrl: vi.fn(),
+}));
+
 const skillInventoryMocks = vi.hoisted(() => ({
   invalidateSkillInventory: vi.fn(),
 }));
@@ -56,6 +60,7 @@ vi.mock("$lib/shared/logging/api.js", () => apiMocks);
 vi.mock("$lib/features/settings/api/settings.js", () => apiMocks);
 vi.mock("$lib/shared/logging/appLogger.js", () => loggerMocks);
 vi.mock("@tauri-apps/plugin-dialog", () => dialogMocks);
+vi.mock("@tauri-apps/plugin-opener", () => openerMocks);
 vi.mock("$lib/features/skills/index.js", () => skillInventoryMocks);
 vi.mock("$lib/features/appUpdates/index.js", async () => {
   const { derived, get, writable } = await import("svelte/store");
@@ -232,6 +237,7 @@ describe("SettingsModule", () => {
     apiMocks.writeModulePerformanceLog.mockResolvedValue(undefined);
     dialogMocks.save.mockResolvedValue("/tmp/log-export.txt");
     dialogMocks.open.mockResolvedValue(null);
+    openerMocks.openUrl.mockResolvedValue(undefined);
     appUpdateState.set(defaultAppUpdateState());
     setModulePerformanceDiagnosticsEnabledState(false);
     loggerMocks.logAppEvent.mockResolvedValue(undefined);
@@ -399,6 +405,20 @@ describe("SettingsModule", () => {
 
     expect(screen.getByText("About Modus")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /License|Account/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the project GitHub page from About", async () => {
+    render(SettingsModule);
+
+    await waitFor(() => {
+      expect(apiMocks.getToolPaths).toHaveBeenCalled();
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+
+    await waitFor(() => {
+      expect(openerMocks.openUrl).toHaveBeenCalledWith("https://github.com/leon4z/Modus");
+    });
   });
 
   it("runs a manual app update check from About", async () => {
