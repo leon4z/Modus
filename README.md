@@ -19,19 +19,19 @@
 
 ## Why Modus?
 
-AI coding tools often keep their rules, Skills, MCP entries, and configuration files in different local paths. Editing those files by hand is easy to get wrong, especially when several tools share similar concepts but use different storage layouts.
+AI coding tools often keep their rules, Skills, MCP entries, and configuration files in different local paths. A rule that works well in one agent often has to be copied and edited again for another tool. Whether a Skill is actually available to a specific tool can also require checking folders and tool-specific behavior by hand.
 
-Modus gives you a single local workspace for inspecting those assets, previewing file changes, and writing only after confirmation.
+Modus gives those local assets one visible, reusable, and auditable workspace. You can manage rules, Skills, MCP, and config files in one interface, then review the exact file changes before anything is written.
 
-## Features
+## Highlights
 
-- **Tool overview**: See managed AI coding tools and their visible Rules, Skills, MCP, and Config assets.
-- **Rules management**: Maintain a global rule and preview the tool files that will be changed before writing.
-- **Tool-native rules**: Inspect and edit rule files that belong to each supported tool.
-- **Skills management**: Browse shared and tool-specific Skill folders, then copy, install, uninstall, edit, or delete individual Skills.
-- **MCP editor**: View and edit supported MCP server configuration snippets with validation and backups.
-- **Config viewer**: Inspect local configuration file locations and health.
-- **Settings**: Manage language, theme, enabled tools, custom paths, logs, and manual update checks.
+- **Inject one global rule set across tools**: Maintain shared rules once and sync them into supported tools so different agents work under the same constraints without repeated manual edits.
+- **See whether a Skill is usable by each tool**: Skill cards show per-tool availability, making it clear which tools can currently use a given Skill.
+- **Support shared Skills and tool-local Skills**: Modus distinguishes tools that support user-level shared Skills from tools that only read tool-local Skill folders. It is compatible with common `skill.sh` community install patterns, including linking a shared Skill into a tool folder while keeping one maintainable source.
+- **Reuse polished Skills across tools**: A Skill refined inside one tool can be copied into another tool without rebuilding the same folder by hand.
+- **Unload Skills that waste context**: Too many Skills can consume context. Modus makes it easy to uninstall a Skill from one tool or delete a source after review.
+- **Edit dotfile configs from one place**: Agent configuration often lives in local dotfile directories and usually requires a terminal or IDE. Modus brings supported config entries into one editing surface.
+- **Audit file changes before writing**: Creates, edits, deletes, and symlinks are previewed before confirmation, reducing the risk of accidentally removing rules or Skills you have already refined.
 
 ## Screenshots
 
