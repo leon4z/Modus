@@ -4,6 +4,10 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.2 - 2026-06-03
+
+- Removed the app icon's outer rim highlight so Finder, Dock, and app preview surfaces show a cleaner icon edge.
+
 ## 1.0.1 - 2026-06-03
 
 - Improved CLI tool detection for installed macOS builds by checking common local binary directories when the app is launched without a shell PATH.
