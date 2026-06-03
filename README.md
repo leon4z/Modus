@@ -23,6 +23,8 @@ AI coding tools often keep their rules, Skills, MCP entries, and configuration f
 
 Modus gives those local assets one visible, reusable, and auditable workspace. You can manage rules, Skills, MCP, and config files in one interface, then review the exact file changes before anything is written.
 
+Tool support is based on each tool's official documentation plus local verification of real macOS behavior, especially when the docs do not fully specify where rules, Skills, MCP, or config sources live on disk. Modus treats support as a capability matrix, so a tool can be supported for discovery or read-only review even when a specific write action has not been verified.
+
 ## Highlights
 
 - **Inject one global rule set across tools**: Maintain shared rules once and sync them into supported tools so different agents work under the same constraints without repeated manual edits.
@@ -53,6 +55,30 @@ Modus gives those local assets one visible, reusable, and auditable workspace. Y
 | MCP | Shows and edits supported MCP server configuration entries. |
 | Config | Shows tool configuration file state and paths. |
 | Settings | Controls Modus preferences, enabled tools, and custom paths. |
+
+## Supported Tools
+
+Current verified built-in tool support covers:
+
+- Claude Code
+- Codex
+- CodeBuddy
+- Cursor
+- GitHub Copilot
+- Hermes Agent
+- Kiro
+- OpenClaw
+- OpenCode
+- Pi Agent
+- Qoder
+- Trae
+- Trae CN
+- Trae Solo
+- Trae Solo CN
+- Windsurf
+- WorkBuddy
+
+Settings can also register custom local tools by path. Custom tools are user-configured entries and are separate from the built-in support list above.
 
 ## What Modus Does Not Do
 
