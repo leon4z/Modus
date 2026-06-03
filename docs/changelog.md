@@ -4,7 +4,7 @@
 - Source-of-Truth: false
 - Type: note
 
-## Unreleased
+## 1.0.0 - 2026-06-03
 
 - Prepared the Modus mainline around the retained local core workflows: Dashboard, Rules, Skills, Config, MCP, and Settings.
 - Removed public exposure for advanced workflows that are not part of the current product surface.

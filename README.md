@@ -60,7 +60,7 @@ Modus is not a model proxy, API router, account manager, subscription manager, r
 
 ## Install
 
-Release builds are not published yet. For now, run Modus from source.
+Download the latest build from [GitHub Releases](https://github.com/leon4z/Modus/releases/latest). If no release asset is available yet, run Modus from source.
 
 ## Development
 
@@ -95,7 +95,7 @@ Build commands:
 
 ```bash
 npm run tauri build
-npm run tauri:build:pre-release -- --config '{"version":"0.1.1-test.1"}'
+npm run tauri:build:pre-release -- --config '{"version":"1.0.1-test.1"}'
 ```
 
 ## Documentation
