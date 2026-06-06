@@ -4,6 +4,12 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.5 - 2026-06-07
+
+- Added separate App and CLI presence evidence for adapted coding tools.
+- Showed tool presence as independent APP and CLI badges in Settings instead of a combined state.
+- Updated tool research and onboarding notes to record official app/CLI detection evidence before future adapters are integrated.
+
 ## 1.0.4 - 2026-06-04
 
 - Updated managed Global Rule block markers to use the Modus product name while preserving compatibility with existing managed blocks.

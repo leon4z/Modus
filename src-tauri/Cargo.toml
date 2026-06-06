@@ -1,6 +1,6 @@
 [package]
 name = "modus"
-version = "1.0.4"
+version = "1.0.5"
 default-run = "Modus"
 description = "A macOS desktop app for managing local AI coding tool rules, skills, configs, and MCP settings."
 authors = ["you"]
