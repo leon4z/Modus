@@ -5,7 +5,7 @@ use super::{
     RuleFormat, RuleSource, ToolAdapter, ToolCapability, ToolCapabilityAccess,
     ToolCapabilityActionEvidence, ToolCapabilityFormat, ToolCapabilityKind, ToolCapabilityScope,
     ToolCapabilitySourceConfidence, ToolCapabilitySourceKind, ToolCapabilitySupportingSource,
-    ToolSourceDiagnosticState,
+    ToolPresence, ToolSourceDiagnosticState,
 };
 use crate::platform::tool_catalog::{capabilities as catalog_capabilities, registry};
 use std::collections::HashSet;
@@ -157,17 +157,21 @@ impl ToolAdapter for DeclaredToolAdapter {
     }
 
     fn detect(&self) -> bool {
+        self.presence().detected
+    }
+
+    fn presence(&self) -> ToolPresence {
         let has_explicit_probe =
             !self.detection_paths.is_empty() || !self.detection_commands.is_empty();
-        let explicit_probe_detected = self.detection_paths.iter().any(|path| path.exists())
-            || self
-                .detection_commands
-                .iter()
-                .any(|command| command_exists(command));
         if has_explicit_probe {
-            explicit_probe_detected
+            ToolPresence::from_presence(
+                self.detection_paths.iter().any(|path| path.exists()),
+                self.detection_commands
+                    .iter()
+                    .any(|command| command_exists(command)),
+            )
         } else {
-            self.config_dir.exists()
+            ToolPresence::unlabeled(self.config_dir.exists())
         }
     }
 
@@ -501,6 +505,91 @@ mod tests {
     }
 
     #[test]
+    fn declared_presence_labels_app_only_detection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("missing-config");
+        let app_dir = tmp.path().join("App Only.app");
+        fs::create_dir_all(&app_dir).unwrap();
+        let adapter = DeclaredToolAdapter::new("declared", "Declared", "D", config_dir, vec![])
+            .with_detection_paths(&[app_dir]);
+
+        let presence = adapter.presence();
+
+        assert!(presence.detected);
+        assert!(presence.app_detected);
+        assert!(!presence.cli_detected);
+        assert_eq!(presence.label, "APP");
+    }
+
+    #[test]
+    fn declared_presence_labels_cli_only_detection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("missing-config");
+        let adapter = DeclaredToolAdapter::new("declared", "Declared", "D", config_dir, vec![])
+            .with_detection_commands(&["sh"]);
+
+        let presence = adapter.presence();
+
+        assert!(presence.detected);
+        assert!(!presence.app_detected);
+        assert!(presence.cli_detected);
+        assert_eq!(presence.label, "CLI");
+    }
+
+    #[test]
+    fn declared_presence_labels_app_partial_when_cli_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("missing-config");
+        let app_dir = tmp.path().join("Partial.app");
+        fs::create_dir_all(&app_dir).unwrap();
+        let adapter = DeclaredToolAdapter::new("declared", "Declared", "D", config_dir, vec![])
+            .with_detection_paths(&[app_dir])
+            .with_detection_commands(&["modus-command-that-should-not-exist"]);
+
+        let presence = adapter.presence();
+
+        assert!(presence.detected);
+        assert!(presence.app_detected);
+        assert!(!presence.cli_detected);
+        assert_eq!(presence.label, "APP");
+    }
+
+    #[test]
+    fn declared_presence_labels_cli_partial_when_app_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("missing-config");
+        let app_dir = tmp.path().join("Missing.app");
+        let adapter = DeclaredToolAdapter::new("declared", "Declared", "D", config_dir, vec![])
+            .with_detection_paths(&[app_dir])
+            .with_detection_commands(&["sh"]);
+
+        let presence = adapter.presence();
+
+        assert!(presence.detected);
+        assert!(!presence.app_detected);
+        assert!(presence.cli_detected);
+        assert_eq!(presence.label, "CLI");
+    }
+
+    #[test]
+    fn declared_presence_labels_app_and_cli_when_both_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("missing-config");
+        let app_dir = tmp.path().join("Both.app");
+        fs::create_dir_all(&app_dir).unwrap();
+        let adapter = DeclaredToolAdapter::new("declared", "Declared", "D", config_dir, vec![])
+            .with_detection_paths(&[app_dir])
+            .with_detection_commands(&["sh"]);
+
+        let presence = adapter.presence();
+
+        assert!(presence.detected);
+        assert!(presence.app_detected);
+        assert!(presence.cli_detected);
+        assert_eq!(presence.label, "APP+CLI");
+    }
+
+    #[test]
     fn declared_detection_ignores_config_dir_when_explicit_probe_is_absent() {
         let tmp = tempfile::tempdir().unwrap();
         let config_dir = tmp.path().join("leftover-config");
@@ -510,5 +599,20 @@ mod tests {
             .with_detection_paths(&[app_dir]);
 
         assert!(!adapter.detect());
+    }
+
+    #[test]
+    fn declared_presence_keeps_config_fallback_unlabeled_when_no_explicit_probe_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        let adapter = DeclaredToolAdapter::new("declared", "Declared", "D", config_dir, vec![]);
+
+        let presence = adapter.presence();
+
+        assert!(presence.detected);
+        assert!(!presence.app_detected);
+        assert!(!presence.cli_detected);
+        assert_eq!(presence.label, "");
     }
 }

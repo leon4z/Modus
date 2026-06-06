@@ -49,6 +49,7 @@ pub mod workbuddy;
 pub use crate::platform::tool_adapters::{
     adapter_can_manage_global_rule_target, adapter_can_write_path,
     adapter_has_default_global_rule_file_target, declared as declared_tool, ToolAdapter,
+    ToolPresence,
 };
 pub(crate) use crate::platform::tool_capabilities::capability_matches_eligible_global_rule_target;
 #[allow(unused_imports)]
@@ -113,6 +114,12 @@ pub struct DetectedTool {
     #[serde(default = "default_primary_config_health")]
     pub tool_config_health: PrimaryConfigHealth,
     pub detected: bool,
+    #[serde(default)]
+    pub presence_app_detected: bool,
+    #[serde(default)]
+    pub presence_cli_detected: bool,
+    #[serde(default)]
+    pub presence_label: String,
     pub rule_sources: Vec<RuleSource>,
     pub supports_generic_skills: bool,
     #[serde(default)]
@@ -249,18 +256,15 @@ fn compatibility_skill_read_paths(
 fn declared_market_adapters(home: &std::path::Path) -> Vec<Box<dyn ToolAdapter>> {
     vec![
         cursor::create(home),
-        continue_adapter::create(home),
         qoder::create(home),
         opencode::create(home),
         codebuddy::create(home),
         workbuddy::create(home),
         hermes_agent::create(home),
         kiro::create(home),
-        openhands::create(home),
         pi_agent::create(home),
         github_copilot::create(home),
         windsurf::create(home),
-        goose::create(home),
         trae::create(home),
         trae_cn::create(home),
         trae_solo::create(home),
@@ -549,6 +553,9 @@ fn detected_custom_tool(
         skills_dir,
         default_skills_dir: String::new(),
         detected,
+        presence_app_detected: false,
+        presence_cli_detected: false,
+        presence_label: String::new(),
         rule_sources,
         supports_generic_skills,
         certified_global_rule_target: String::new(),
@@ -632,7 +639,8 @@ impl ToolRegistry {
             .adapters
             .iter()
             .map(|adapter| {
-                let detected = adapter.detect();
+                let presence = adapter.presence();
+                let detected = presence.detected;
                 let base_capabilities = adapter.capabilities();
                 let base_skill_projections =
                     skill_capability_projections(adapter.id(), &base_capabilities);
@@ -801,6 +809,9 @@ impl ToolRegistry {
                     skills_dir,
                     default_skills_dir,
                     detected,
+                    presence_app_detected: presence.app_detected,
+                    presence_cli_detected: presence.cli_detected,
+                    presence_label: presence.label,
                     rule_sources,
                     supports_generic_skills,
                     certified_global_rule_target,
@@ -877,6 +888,13 @@ mod tests {
         registry.tool_ids()
     }
 
+    fn deferred_research_tool_ids() -> std::collections::BTreeSet<String> {
+        ["continue", "goose", "openhands"]
+            .into_iter()
+            .map(String::from)
+            .collect()
+    }
+
     #[test]
     fn development_sandbox_uses_only_dev_tool_adapters() {
         let ids = tool_ids_for_runtime(crate::platform::env::RuntimeShape::DevelopmentSandbox);
@@ -894,6 +912,18 @@ mod tests {
             assert!(!ids.iter().any(|id| id.starts_with("dev-tool")));
         }
         assert_eq!(pre_release, release);
+    }
+
+    #[test]
+    fn runtime_builtin_adapters_exclude_deferred_research_only_tools() {
+        let ids = tool_ids_for_runtime(crate::platform::env::RuntimeShape::Release);
+
+        for tool_id in deferred_research_tool_ids() {
+            assert!(
+                !ids.contains(&tool_id),
+                "{tool_id} is research-only and must not enter current runtime detection"
+            );
+        }
     }
 
     #[test]
@@ -1011,6 +1041,9 @@ mod tests {
         assert_eq!(tool.name, "Custom Tool");
         assert_eq!(tool.skills_dir, skills_dir.to_string_lossy().to_string());
         assert!(tool.supports_generic_skills);
+        assert!(!tool.presence_app_detected);
+        assert!(!tool.presence_cli_detected);
+        assert_eq!(tool.presence_label, "");
         assert!(tool.capabilities.iter().any(|capability| {
             capability.kind == ToolCapabilityKind::Rule
                 && capability.source_confidence == ToolCapabilitySourceConfidence::UserConfigured
@@ -1154,6 +1187,53 @@ mod tests {
         fn write_rule(&self, _path: &str, _content: &str) -> Result<(), String> {
             Ok(())
         }
+    }
+
+    struct PresenceAdapter {
+        app_detected: bool,
+        cli_detected: bool,
+    }
+
+    impl ToolAdapter for PresenceAdapter {
+        fn id(&self) -> &str {
+            "presence-test"
+        }
+        fn name(&self) -> &str {
+            "Presence Test"
+        }
+        fn icon(&self) -> &str {
+            "P"
+        }
+        fn config_dir(&self) -> PathBuf {
+            PathBuf::from("/tmp/presence-test")
+        }
+        fn detect(&self) -> bool {
+            self.presence().detected
+        }
+        fn presence(&self) -> ToolPresence {
+            ToolPresence::from_presence(self.app_detected, self.cli_detected)
+        }
+        fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
+            Ok(vec![])
+        }
+        fn write_rule(&self, _path: &str, _content: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn detected_tool_payload_includes_structured_presence_fields() {
+        let registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(PresenceAdapter {
+            app_detected: true,
+            cli_detected: true,
+        })]);
+
+        let tool = registry.detect_all().pop().expect("expected tool");
+
+        assert!(tool.detected);
+        assert!(tool.presence_app_detected);
+        assert!(tool.presence_cli_detected);
+        assert_eq!(tool.presence_label, "APP+CLI");
     }
 
     #[test]
@@ -1504,7 +1584,9 @@ mod tests {
 
     #[test]
     fn declared_market_capabilities_represent_uncertain_and_unsupported_states() {
-        let adapters = declared_market_adapters(std::path::Path::new("/tmp/modus-home"));
+        let home = std::path::Path::new("/tmp/modus-home");
+        let mut adapters = declared_market_adapters(home);
+        adapters.push(continue_adapter::create(home));
         let find_adapter = |id: &str| {
             adapters
                 .iter()
@@ -1846,14 +1928,18 @@ mod tests {
     }
 
     #[test]
-    fn runtime_builtin_registry_matches_catalog_ids() {
+    fn runtime_builtin_registry_matches_current_support_catalog_ids() {
         let mut registered = builtin_tool_adapters(std::path::Path::new("/tmp/modus-home"))
             .into_iter()
             .map(|adapter| adapter.id().to_string())
             .collect::<Vec<_>>();
         registered.sort();
 
-        let mut expected = crate::platform::tool_catalog::registry::known_ids();
+        let deferred = deferred_research_tool_ids();
+        let mut expected = crate::platform::tool_catalog::registry::known_ids()
+            .into_iter()
+            .filter(|id| !deferred.contains(id))
+            .collect::<Vec<_>>();
         expected.sort();
 
         assert_eq!(registered, expected);

@@ -24,6 +24,7 @@ pub fn create(home: &Path) -> Box<dyn ToolAdapter> {
             capabilities(home),
         )
         .with_skills_dir(home.join(".hermes/skills"))
+        .with_detection_paths(&[PathBuf::from("/Applications/Hermes.app")])
         .with_detection_commands(&["hermes"]),
     )
 }

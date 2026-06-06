@@ -4,8 +4,8 @@ use super::{
     adapter_can_write_path, discover_rule_sources_for_adapter, RuleSource, ToolAdapter,
     ToolCapability, ToolCapabilityKind,
 };
-use crate::platform::tool_adapters::command_exists;
 use crate::platform::tool_adapters::declared::{directory_diagnostics, file_diagnostics};
+use crate::platform::tool_adapters::{command_exists, ToolPresence};
 use crate::platform::tool_capabilities::{
     runtime_action_gates, ToolCapabilityAccess, ToolCapabilityAction, ToolCapabilityFormat,
     ToolCapabilityScope, ToolCapabilitySourceConfidence, ToolCapabilitySourceKind,
@@ -27,6 +27,10 @@ impl CodexAdapter {
     fn definition(&self) -> &'static ToolDefinition {
         registry::definition("codex").expect("missing Codex catalog definition")
     }
+}
+
+fn codex_presence(app_detected: bool, cli_detected: bool) -> ToolPresence {
+    ToolPresence::from_presence(app_detected, cli_detected)
 }
 
 fn capabilities(home: &Path) -> Vec<ToolCapability> {
@@ -195,7 +199,14 @@ impl ToolAdapter for CodexAdapter {
     }
 
     fn detect(&self) -> bool {
-        command_exists("codex")
+        self.presence().detected
+    }
+
+    fn presence(&self) -> ToolPresence {
+        codex_presence(
+            Path::new("/Applications/Codex.app").exists(),
+            command_exists("codex"),
+        )
     }
 
     fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
@@ -237,6 +248,27 @@ mod tests {
         project_capabilities, ToolCapabilityAction as ProjectedAction, ToolCapabilityModule,
         ToolCapabilitySourceRole,
     };
+
+    #[test]
+    fn codex_presence_labels_app_only_cli_only_and_app_plus_cli() {
+        let app_only = codex_presence(true, false);
+        assert!(app_only.detected);
+        assert!(app_only.app_detected);
+        assert!(!app_only.cli_detected);
+        assert_eq!(app_only.label, "APP");
+
+        let cli_only = codex_presence(false, true);
+        assert!(cli_only.detected);
+        assert!(!cli_only.app_detected);
+        assert!(cli_only.cli_detected);
+        assert_eq!(cli_only.label, "CLI");
+
+        let both = codex_presence(true, true);
+        assert!(both.detected);
+        assert!(both.app_detected);
+        assert!(both.cli_detected);
+        assert_eq!(both.label, "APP+CLI");
+    }
 
     #[test]
     fn codex_rule_discovery_uses_fixed_agents_file_only() {

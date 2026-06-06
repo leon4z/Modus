@@ -23,8 +23,7 @@ pub fn create(home: &Path) -> Box<dyn ToolAdapter> {
             capabilities(home),
         )
         .with_skills_dir(home.join(".kiro/skills"))
-        .with_detection_paths(&[PathBuf::from("/Applications/Kiro.app")])
-        .with_detection_commands(&["kiro"]),
+        .with_detection_paths(&[PathBuf::from("/Applications/Kiro.app")]),
     )
 }
 
@@ -198,6 +197,16 @@ mod tests {
         project_capabilities, ToolCapabilityAction as ProjectedAction,
         ToolCapabilityExclusionReason, ToolCapabilityModule, ToolCapabilitySourceRole,
     };
+
+    #[test]
+    fn presence_is_currently_app_only() {
+        let adapter = create(Path::new("/Users/example"));
+        let presence = adapter.presence();
+
+        assert!(!presence.cli_detected);
+        assert_ne!(presence.label, "CLI");
+        assert_ne!(presence.label, "APP+CLI");
+    }
 
     #[test]
     fn runtime_capabilities_are_adapter_owned_and_snapshot_free() {

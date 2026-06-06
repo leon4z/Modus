@@ -267,6 +267,79 @@ describe("SettingsModule", () => {
     expect(screen.queryByLabelText("Add Custom Tool")).not.toBeInTheDocument();
   });
 
+  it("shows backend-provided presence badges for built-in tools only", async () => {
+    activeSettingsTab.set("tools");
+    toolStores.tools.set([
+      {
+        id: "codex",
+        name: "Codex",
+        detected: true,
+        config_dir: "/codex/config",
+        skills_dir: "/codex/skills",
+        presence_app_detected: true,
+        presence_cli_detected: true,
+        presence_label: "APP+CLI",
+      },
+      {
+        id: "cursor",
+        name: "Cursor",
+        detected: true,
+        config_dir: "/cursor/config",
+        skills_dir: "/cursor/skills",
+        presence_app_detected: true,
+        presence_cli_detected: false,
+        presence_label: "APP",
+      },
+      {
+        id: "claude-code",
+        name: "Claude Code",
+        detected: true,
+        config_dir: "/claude/config",
+        skills_dir: "/claude/skills",
+        presence_app_detected: false,
+        presence_cli_detected: true,
+        presence_label: "CLI",
+      },
+    ]);
+    toolStores.managedToolIds.set(["codex", "cursor", "claude-code"]);
+    apiMocks.getCustomTools.mockResolvedValue([
+      {
+        id: "custom-surface",
+        name: "Custom Surface",
+        icon: "wrench",
+        config_dir: "",
+        rule_directory: "/custom/rules",
+        global_rule_file: "",
+        skills_dir: "",
+        shared_skill_direct_read: false,
+        mcp_config: "",
+        tool_config: "",
+        rule_file: "",
+        presence_app_detected: true,
+        presence_cli_detected: true,
+        presence_label: "APP+CLI",
+      },
+    ]);
+
+    render(SettingsModule);
+
+    await waitFor(() => {
+      expect(settingsToolRow("codex")).toBeTruthy();
+      expect(settingsToolRow("custom-surface")).toBeTruthy();
+    });
+    expect(settingsToolRow("codex")).not.toHaveTextContent("APP+CLI");
+    expect(within(settingsToolRow("codex")).getByText("APP")).toBeInTheDocument();
+    expect(within(settingsToolRow("codex")).getByText("CLI")).toBeInTheDocument();
+    expect(within(settingsToolRow("cursor")).getByText("APP")).toBeInTheDocument();
+    expect(within(settingsToolRow("cursor")).queryByText("CLI")).not.toBeInTheDocument();
+    expect(within(settingsToolRow("claude-code")).queryByText("APP")).not.toBeInTheDocument();
+    expect(within(settingsToolRow("claude-code")).getByText("CLI")).toBeInTheDocument();
+    expect(settingsToolRow("custom-surface")).toHaveTextContent("Custom");
+    expect(settingsToolRow("custom-surface")).not.toHaveTextContent("APP+CLI");
+    expect(within(settingsToolRow("custom-surface")).queryByText("APP")).not.toBeInTheDocument();
+    expect(within(settingsToolRow("custom-surface")).queryByText("CLI")).not.toBeInTheDocument();
+  });
+
   it("creates a custom tool with expanded configuration fields and pickers", async () => {
     activeSettingsTab.set("tools");
     render(SettingsModule);

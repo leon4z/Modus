@@ -1929,7 +1929,16 @@
                     {/if}
                   </button>
                   <div class="st-row-main">
-                    <div class="st-row-title"><ToolIcon toolId={tool.id} size={20} style="margin-right:8px;" /> {tool.name}</div>
+                    <div class="st-row-title">
+                      <ToolIcon toolId={tool.id} size={20} style="margin-right:8px;" />
+                      <span class="st-row-tool-name">{tool.name}</span>
+                      {#if tool.presence_app_detected}
+                        <span class="st-presence-badge">APP</span>
+                      {/if}
+                      {#if tool.presence_cli_detected}
+                        <span class="st-presence-badge">CLI</span>
+                      {/if}
+                    </div>
                   </div>
                 </div>
                 <div class="st-row-right">
@@ -2497,7 +2506,8 @@
   .st-row-left { flex: 1; min-width: 0; }
   .st-row-left--tool { display: flex; align-items: center; gap: 8px; }
   .st-row-main { min-width: 0; }
-  .st-row-title { display: flex; align-items: center; font-size: 15px; font-weight: 600; color: var(--color-text-main); }
+  .st-row-title { display: flex; align-items: center; min-width: 0; font-size: 15px; font-weight: 600; color: var(--color-text-main); }
+  .st-row-tool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .st-row-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-left: 16px; }
   .st-row-expand-btn,
   .st-row-action-btn { width: 28px; height: 28px; border-radius: 7px; }
@@ -2525,6 +2535,7 @@
   .st-source-badge--override { border-color: rgba(59,130,246,0.35); color: #3b82f6; background: rgba(59,130,246,0.08); }
   .st-field-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; }
   .st-inline-segmented { min-width: 0; justify-self: start; }
+  .st-presence-badge { flex-shrink: 0; margin-left: 8px; padding: 1px 6px; border-radius: 5px; border: 1px solid rgba(59, 130, 246, 0.28); color: #2563eb; background: rgba(59, 130, 246, 0.08); font-size: 9px; line-height: 1.4; font-weight: 600; }
   .st-badge-custom { font-size: 9px; padding: 1px 6px; background: rgba(245,158,11,0.12); color: #f59e0b; border-radius: 3px; margin-left: 6px; font-weight: 400; }
 
   .settings-input { width: 100%; min-width: 0; background: var(--bg-input); color: var(--color-text-main); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 10px; font-size: 11px; font-family: "SF Mono", monospace; outline: none; transition: border-color 0.15s, background 0.15s; }

@@ -25,6 +25,7 @@ pub fn create(home: &Path) -> Box<dyn ToolAdapter> {
         )
         .with_skills_dir(home.join(".codebuddy/skills"))
         .with_generic_skills(true)
+        .with_detection_paths(&[PathBuf::from("/Applications/CodeBuddy.app")])
         .with_detection_commands(&["codebuddy", "cbc"]),
     )
 }

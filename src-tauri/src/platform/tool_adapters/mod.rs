@@ -22,6 +22,41 @@ pub use crate::platform::tool_capabilities::{
 
 use crate::platform::tool_capabilities::skills::{McpServerInfo, SkillInfo};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolPresence {
+    pub detected: bool,
+    pub app_detected: bool,
+    pub cli_detected: bool,
+    pub label: String,
+}
+
+impl ToolPresence {
+    pub fn from_presence(app_detected: bool, cli_detected: bool) -> Self {
+        let label = match (app_detected, cli_detected) {
+            (true, true) => "APP+CLI",
+            (true, false) => "APP",
+            (false, true) => "CLI",
+            (false, false) => "",
+        }
+        .to_string();
+        Self {
+            detected: app_detected || cli_detected,
+            app_detected,
+            cli_detected,
+            label,
+        }
+    }
+
+    pub fn unlabeled(detected: bool) -> Self {
+        Self {
+            detected,
+            app_detected: false,
+            cli_detected: false,
+            label: String::new(),
+        }
+    }
+}
+
 pub trait ToolAdapter: Send + Sync {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
@@ -31,6 +66,9 @@ pub trait ToolAdapter: Send + Sync {
         self.config_dir()
     }
     fn detect(&self) -> bool;
+    fn presence(&self) -> ToolPresence {
+        ToolPresence::unlabeled(self.detect())
+    }
     fn read_rules(&self) -> Result<Vec<RuleSource>, String>;
     fn write_rule(&self, path: &str, content: &str) -> Result<(), String>;
 

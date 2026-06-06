@@ -24,6 +24,7 @@ pub fn create(home: &Path) -> Box<dyn ToolAdapter> {
         )
         .with_skills_dir(home.join(".config/opencode/skills"))
         .with_generic_skills(true)
+        .with_detection_paths(&[PathBuf::from("/Applications/OpenCode.app")])
         .with_detection_commands(&["opencode"]),
     )
 }

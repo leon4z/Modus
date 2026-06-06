@@ -1,8 +1,8 @@
 // Purpose: Claude Code tool adapter for paths, rules, skills, and MCP listings.
 
 use super::{adapter_can_write_path, discover_rule_sources_for_adapter, RuleSource, ToolAdapter};
-use crate::platform::tool_adapters::command_exists;
 use crate::platform::tool_adapters::declared::{directory_diagnostics, file_diagnostics};
+use crate::platform::tool_adapters::{command_exists, ToolPresence};
 use crate::platform::tool_capabilities::{
     runtime_action_gates, ToolCapability, ToolCapabilityAccess, ToolCapabilityAction,
     ToolCapabilityActionEvidence, ToolCapabilityFormat, ToolCapabilityKind, ToolCapabilityScope,
@@ -24,6 +24,10 @@ impl ClaudeCodeAdapter {
     fn definition(&self) -> &'static ToolDefinition {
         registry::definition("claude-code").expect("missing Claude Code catalog definition")
     }
+}
+
+fn claude_code_presence(cli_detected: bool) -> ToolPresence {
+    ToolPresence::from_presence(false, cli_detected)
 }
 
 fn capabilities(home: &Path) -> Vec<ToolCapability> {
@@ -195,7 +199,11 @@ impl ToolAdapter for ClaudeCodeAdapter {
     }
 
     fn detect(&self) -> bool {
-        command_exists("claude")
+        self.presence().detected
+    }
+
+    fn presence(&self) -> ToolPresence {
+        claude_code_presence(command_exists("claude"))
     }
 
     fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
@@ -233,6 +241,26 @@ mod tests {
         project_capabilities, ToolCapabilityAction as ProjectedAction, ToolCapabilityModule,
         ToolCapabilitySourceRole,
     };
+
+    #[test]
+    fn claude_app_without_claude_cli_does_not_detect_claude_code() {
+        let presence = claude_code_presence(false);
+
+        assert!(!presence.detected);
+        assert!(!presence.app_detected);
+        assert!(!presence.cli_detected);
+        assert_eq!(presence.label, "");
+    }
+
+    #[test]
+    fn claude_code_presence_is_cli_only() {
+        let presence = claude_code_presence(true);
+
+        assert!(presence.detected);
+        assert!(!presence.app_detected);
+        assert!(presence.cli_detected);
+        assert_eq!(presence.label, "CLI");
+    }
 
     #[test]
     fn claude_rule_discovery_uses_memory_file_and_rules_directory() {

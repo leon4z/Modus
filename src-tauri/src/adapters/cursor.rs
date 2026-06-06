@@ -22,7 +22,8 @@ pub fn create(home: &Path) -> Box<dyn ToolAdapter> {
         )
         .with_skills_dir(home.join(".cursor/skills"))
         .with_generic_skills(true)
-        .with_detection_paths(&[PathBuf::from("/Applications/Cursor.app")]),
+        .with_detection_paths(&[PathBuf::from("/Applications/Cursor.app")])
+        .with_detection_commands(&["cursor-agent"]),
     )
 }
 

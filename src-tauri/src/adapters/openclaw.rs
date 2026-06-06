@@ -4,8 +4,8 @@ use super::{
     adapter_can_write_path, discover_rule_sources_for_adapter, RuleSource, ToolAdapter,
     ToolCapability, ToolCapabilityKind,
 };
-use crate::platform::tool_adapters::command_exists;
 use crate::platform::tool_adapters::declared::{directory_diagnostics, file_diagnostics};
+use crate::platform::tool_adapters::{command_exists, ToolPresence};
 use crate::platform::tool_capabilities::{
     runtime_action_gates, ToolCapabilityAccess, ToolCapabilityAction, ToolCapabilityActionEvidence,
     ToolCapabilityFormat, ToolCapabilityScope, ToolCapabilitySourceConfidence,
@@ -51,6 +51,10 @@ impl OpenClawAdapter {
         dirs.sort_by(|a, b| a.0.cmp(&b.0));
         dirs
     }
+}
+
+fn openclaw_presence(app_detected: bool, cli_detected: bool) -> ToolPresence {
+    ToolPresence::from_presence(app_detected, cli_detected)
 }
 
 fn title_case_words(value: &str) -> String {
@@ -104,6 +108,27 @@ mod tests {
         project_capabilities, ToolCapabilityAction as ProjectedAction, ToolCapabilityModule,
         ToolCapabilitySourceRole,
     };
+
+    #[test]
+    fn openclaw_presence_labels_app_only_cli_only_and_app_plus_cli() {
+        let app_only = openclaw_presence(true, false);
+        assert!(app_only.detected);
+        assert!(app_only.app_detected);
+        assert!(!app_only.cli_detected);
+        assert_eq!(app_only.label, "APP");
+
+        let cli_only = openclaw_presence(false, true);
+        assert!(cli_only.detected);
+        assert!(!cli_only.app_detected);
+        assert!(cli_only.cli_detected);
+        assert_eq!(cli_only.label, "CLI");
+
+        let both = openclaw_presence(true, true);
+        assert!(both.detected);
+        assert!(both.app_detected);
+        assert!(both.cli_detected);
+        assert_eq!(both.label, "APP+CLI");
+    }
 
     #[test]
     fn declares_trusted_workspace_agents_as_writable() {
@@ -381,7 +406,14 @@ impl ToolAdapter for OpenClawAdapter {
     }
 
     fn detect(&self) -> bool {
-        command_exists("openclaw") || Path::new("/Applications/OpenClaw.app").exists()
+        self.presence().detected
+    }
+
+    fn presence(&self) -> ToolPresence {
+        openclaw_presence(
+            Path::new("/Applications/OpenClaw.app").exists(),
+            command_exists("openclaw"),
+        )
     }
 
     fn read_rules(&self) -> Result<Vec<RuleSource>, String> {

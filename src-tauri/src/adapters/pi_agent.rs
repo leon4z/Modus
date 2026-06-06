@@ -8,7 +8,7 @@ use crate::adapters::{
     ToolSourceDiagnosticState,
 };
 use crate::platform::tool_adapters::declared::{directory_diagnostics, file_diagnostics};
-use crate::platform::tool_adapters::{command_exists, is_executable_file};
+use crate::platform::tool_adapters::{command_exists, is_executable_file, ToolPresence};
 use crate::platform::tool_capabilities::runtime_action_gates;
 use crate::platform::tool_catalog::registry;
 use serde_json::Value;
@@ -60,10 +60,11 @@ impl ToolAdapter for PiAgentAdapter {
     }
 
     fn detect(&self) -> bool {
-        command_exists("pi")
-            || ["/opt/homebrew/bin/pi", "/usr/local/bin/pi"]
-                .iter()
-                .any(|path| is_executable_file(Path::new(path)))
+        self.presence().detected
+    }
+
+    fn presence(&self) -> ToolPresence {
+        pi_presence(pi_cli_detected())
     }
 
     fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
@@ -96,6 +97,17 @@ impl ToolAdapter for PiAgentAdapter {
     fn capabilities(&self) -> Vec<ToolCapability> {
         capabilities(&self.home, &self.config_dir, self.mcp_adapter_configured())
     }
+}
+
+fn pi_cli_detected() -> bool {
+    command_exists("pi")
+        || ["/opt/homebrew/bin/pi", "/usr/local/bin/pi"]
+            .iter()
+            .any(|path| is_executable_file(Path::new(path)))
+}
+
+fn pi_presence(cli_detected: bool) -> ToolPresence {
+    ToolPresence::from_presence(false, cli_detected)
 }
 
 fn capabilities(
@@ -386,6 +398,21 @@ mod tests {
         let settings = home.join(".pi/agent/settings.json");
         fs::create_dir_all(settings.parent().unwrap()).unwrap();
         fs::write(settings, content).unwrap();
+    }
+
+    #[test]
+    fn presence_is_cli_only() {
+        let detected = pi_presence(true);
+        assert!(detected.detected);
+        assert!(!detected.app_detected);
+        assert!(detected.cli_detected);
+        assert_eq!(detected.label, "CLI");
+
+        let missing = pi_presence(false);
+        assert!(!missing.detected);
+        assert!(!missing.app_detected);
+        assert!(!missing.cli_detected);
+        assert_eq!(missing.label, "");
     }
 
     #[test]
