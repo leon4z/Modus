@@ -4,6 +4,10 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.6 - 2026-06-08
+
+- Fixed system appearance mode so the app keeps following macOS automatic light and dark changes while it remains open.
+
 ## 1.0.5 - 2026-06-07
 
 - Added separate App and CLI presence evidence for adapted coding tools.
