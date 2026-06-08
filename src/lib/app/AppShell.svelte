@@ -19,7 +19,7 @@
     DEFAULT_SKILL_INVENTORY_TTL_MS,
     prewarmSkillInventory,
   } from "$lib/features/skills/queries/skillInventoryQuery.js";
-  import { loadAppUpdateState, runAppUpdateCheck } from "$lib/features/appUpdates/index.js";
+  import { appUpdateState, loadAppUpdateState, runAppUpdateCheck } from "$lib/features/appUpdates/index.js";
   import { applyLanguagePreference, t } from "$lib/shared/i18n/index.js";
   import { isInitialized, getLanguage, getTheme, getModulePerformanceDiagnosticsEnabled } from "$lib/features/settings/index.js";
   import { setModulePerformanceDiagnosticsEnabledState } from "$lib/shared/diagnostics/modulePerformance.js";
@@ -60,15 +60,29 @@
   const FOCUS_DISCOVERY_COOLDOWN_MS = 30000;
   const SKILL_INVENTORY_PREWARM_DELAY_MS = 250;
   const APP_UPDATE_STARTUP_DELAY_MS = 800;
+  const APP_UPDATE_BACKGROUND_CHECK_COOLDOWN_MS = 30 * 60 * 1000;
+  const APP_UPDATE_STARTUP_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  const APP_UPDATE_KEEPWARM_INTERVAL_MS = 60 * 60 * 1000;
+  const APP_UPDATE_AUTOMATIC_BLOCKED_STATUSES = new Set([
+    "checking",
+    "downloading",
+    "installing",
+    "restart_needed",
+  ]);
   const SKILL_INVENTORY_KEEPWARM_INTERVAL_MS = Math.max(
     15000,
     Math.floor(DEFAULT_SKILL_INVENTORY_TTL_MS * 0.75)
   );
   let lastFocusDiscoveryAt = Date.now();
+  let lastAppUpdateStartupCheckAt = 0;
+  let appUpdateStartupCheckInFlight = false;
+  let appUpdateStateLoaded = false;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let skillInventoryPrewarmTimer = null;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let appUpdateStartupTimer = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let appUpdateKeepwarmInterval = null;
 
   function cancelSkillInventoryPrewarm() {
     if (skillInventoryPrewarmTimer === null) return;
@@ -92,6 +106,71 @@
     if (appUpdateStartupTimer === null) return;
     clearTimeout(appUpdateStartupTimer);
     appUpdateStartupTimer = null;
+  }
+
+  function canRunBackgroundAppUpdateCheck() {
+    return appUpdateStateLoaded && $appInitialized && !showOnboarding && !showNewToolsPrompt;
+  }
+
+  /** @param {any} state */
+  function canRunAutomaticAppUpdateStateCheck(state) {
+    return state?.canCheck && !APP_UPDATE_AUTOMATIC_BLOCKED_STATUSES.has(String(state.status || ""));
+  }
+
+  /** @param {any} state @param {number} now */
+  function isAutomaticAppUpdateCheckDue(state, now) {
+    const lastStartupCheckAt = state?.lastStartupCheckAt;
+    if (!lastStartupCheckAt) return true;
+    const last = Date.parse(String(lastStartupCheckAt));
+    if (!Number.isFinite(last)) return true;
+    return now - last >= APP_UPDATE_STARTUP_CHECK_INTERVAL_MS;
+  }
+
+  /**
+   * @param {{ requireReadyUi?: boolean, respectCooldown?: boolean }} [options]
+   */
+  async function requestAppUpdateStartupCheck(options = {}) {
+    const requireReadyUi = options.requireReadyUi === true;
+    const respectCooldown = options.respectCooldown !== false;
+    if (requireReadyUi && !canRunBackgroundAppUpdateCheck()) return;
+    if (appUpdateStartupCheckInFlight) return;
+
+    const now = Date.now();
+    if (
+      respectCooldown &&
+      lastAppUpdateStartupCheckAt > 0 &&
+      now - lastAppUpdateStartupCheckAt < APP_UPDATE_BACKGROUND_CHECK_COOLDOWN_MS
+    ) {
+      return;
+    }
+
+    const state = $appUpdateState;
+    if (!canRunAutomaticAppUpdateStateCheck(state)) return;
+    if (respectCooldown && !isAutomaticAppUpdateCheckDue(state, now)) return;
+
+    appUpdateStartupCheckInFlight = true;
+    lastAppUpdateStartupCheckAt = now;
+    try {
+      if (requireReadyUi && !canRunBackgroundAppUpdateCheck()) return;
+      await runAppUpdateCheck("startup");
+    } catch {
+      /* keep automatic update checks best-effort */
+    } finally {
+      appUpdateStartupCheckInFlight = false;
+    }
+  }
+
+  function startAppUpdateKeepwarm() {
+    if (appUpdateKeepwarmInterval !== null) return;
+    appUpdateKeepwarmInterval = setInterval(() => {
+      void requestAppUpdateStartupCheck({ requireReadyUi: true });
+    }, APP_UPDATE_KEEPWARM_INTERVAL_MS);
+  }
+
+  function cancelAppUpdateKeepwarm() {
+    if (appUpdateKeepwarmInterval === null) return;
+    clearInterval(appUpdateKeepwarmInterval);
+    appUpdateKeepwarmInterval = null;
   }
 
   onMount(() => {
@@ -134,14 +213,19 @@
       managedToolIds.set(managed);
       handledNewToolIds = normalizeToolIds(handled);
       appInitialized.set(initialized);
-      if (initialized) scheduleSkillInventoryPrewarm();
+      if (initialized) {
+        scheduleSkillInventoryPrewarm();
+        startAppUpdateKeepwarm();
+      }
       void loadAppUpdateState()
         .then((state) => {
-          if (cancelled || !state.canCheck) return;
+          if (cancelled) return;
+          appUpdateStateLoaded = true;
+          if (!state.canCheck) return;
           cancelAppUpdateStartupCheck();
           appUpdateStartupTimer = setTimeout(() => {
             appUpdateStartupTimer = null;
-            if (!cancelled) void runAppUpdateCheck("startup");
+            if (!cancelled) void requestAppUpdateStartupCheck({ requireReadyUi: true });
           }, APP_UPDATE_STARTUP_DELAY_MS);
         })
         .catch(() => {});
@@ -159,6 +243,7 @@
 
     async function handleWindowFocus() {
       if (!$appInitialized || showOnboarding || showNewToolsPrompt) return;
+      void requestAppUpdateStartupCheck({ requireReadyUi: true });
       const now = Date.now();
       if (now - lastFocusDiscoveryAt < FOCUS_DISCOVERY_COOLDOWN_MS) return;
       lastFocusDiscoveryAt = now;
@@ -181,6 +266,7 @@
       cancelled = true;
       cancelSkillInventoryPrewarm();
       cancelAppUpdateStartupCheck();
+      cancelAppUpdateKeepwarm();
       window.removeEventListener("focus", handleWindowFocus);
     };
   });
@@ -245,6 +331,7 @@
     managedToolIds.set(selected);
     appInitialized.set(true);
     scheduleSkillInventoryPrewarm();
+    startAppUpdateKeepwarm();
     showOnboarding = false;
     showNewToolsPrompt = false;
     await loadTools();

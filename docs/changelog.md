@@ -4,6 +4,10 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.7 - 2026-06-08
+
+- Added automatic in-session app update checks so a running app can discover new releases without requiring a restart.
+
 ## 1.0.6 - 2026-06-08
 
 - Fixed system appearance mode so the app keeps following macOS automatic light and dark changes while it remains open.

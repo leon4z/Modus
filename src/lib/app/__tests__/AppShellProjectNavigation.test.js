@@ -137,6 +137,12 @@ function installLocalStorageStub(seed = {}) {
   return storage;
 }
 
+async function flushMicrotasks(cycles = 8) {
+  for (let i = 0; i < cycles; i += 1) {
+    await Promise.resolve();
+  }
+}
+
 describe("AppShell primary navigation", () => {
   function defaultAppUpdateState(overrides = {}) {
     return {
@@ -178,6 +184,7 @@ describe("AppShell primary navigation", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.restoreAllMocks();
   });
@@ -214,6 +221,109 @@ describe("AppShell primary navigation", () => {
     await waitFor(() => {
       expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledWith("startup");
     }, { timeout: 2000 });
+  });
+
+  it("checks for app updates on window focus without duplicating rapid focus events", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1000);
+
+    render(AppShell);
+
+    await waitFor(() => {
+      expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledWith("startup");
+    }, { timeout: 2000 });
+
+    appUpdateMocks.loadAppUpdateState.mockClear();
+    appUpdateMocks.runAppUpdateCheck.mockClear();
+
+    nowSpy.mockReturnValue(1000 + 60 * 60 * 1000 + 1);
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => {
+      expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledTimes(1);
+    });
+    expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledWith("startup");
+  });
+
+  it("keeps checking for app updates while the initialized app remains open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+
+    render(AppShell);
+
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(800);
+    await flushMicrotasks();
+
+    expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledTimes(1);
+    expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledWith("startup");
+
+    appUpdateMocks.loadAppUpdateState.mockClear();
+    appUpdateMocks.runAppUpdateCheck.mockClear();
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    await flushMicrotasks();
+
+    expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledTimes(1);
+    expect(appUpdateMocks.runAppUpdateCheck).toHaveBeenCalledWith("startup");
+  });
+
+  it("skips automatic app update checks until the persisted startup interval is due", async () => {
+    vi.useFakeTimers();
+    const lastStartupCheckAt = "2026-06-08T00:00:00.000Z";
+    vi.setSystemTime(new Date("2026-06-08T01:00:00.000Z"));
+    appUpdateState.set(defaultAppUpdateState({ lastStartupCheckAt }));
+
+    render(AppShell);
+
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(800);
+    await flushMicrotasks();
+
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event("focus"));
+    await flushMicrotasks();
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    await flushMicrotasks();
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
+  });
+
+  it("does not run automatic app update checks before onboarding completes", async () => {
+    vi.useFakeTimers();
+    settingsMocks.isInitialized.mockResolvedValue(false);
+
+    render(AppShell);
+
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(800);
+    await flushMicrotasks();
+
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
+  });
+
+  it("uses the current local update status before automatic app update checks", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+
+    render(AppShell);
+
+    await flushMicrotasks();
+    appUpdateState.set(defaultAppUpdateState({ status: "checking" }));
+
+    await vi.advanceTimersByTimeAsync(800);
+    await flushMicrotasks();
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event("focus"));
+    await flushMicrotasks();
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    await flushMicrotasks();
+    expect(appUpdateMocks.runAppUpdateCheck).not.toHaveBeenCalled();
   });
 
   it("shows a Settings navigation update tag when an app update is available", async () => {
