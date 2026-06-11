@@ -49,21 +49,28 @@ vi.mock("$lib/shared/components/ConfirmDialog.svelte", async () => {
 vi.mock("$lib/features/tools/index.js", async () => {
   const { derived, writable } = await import("svelte/store");
   const tools = writable([{ id: "codex", name: "Codex", detected: true }]);
+  const managedToolIds = writable(["codex"]);
   const activeToolId = writable("codex");
   const activeTool = derived([tools, activeToolId], ([$tools, $activeToolId]) =>
     $tools.find((tool) => tool.id === $activeToolId) || null
   );
-  const managedTools = derived(tools, ($tools) => $tools.filter((tool) => tool.detected));
+  const managedTools = derived([tools, managedToolIds], ([$tools, $managedToolIds]) => {
+    const managed = new Set($managedToolIds.map(String));
+    return $tools.filter((tool) => tool.detected && managed.has(tool.id));
+  });
   const pendingSubTab = writable(null);
   return {
     loadTools: toolStoreMocks.loadTools,
     activeTool,
     activeToolId,
+    tools,
+    managedToolIds,
     managedTools,
     pendingSubTab,
   };
 });
 import SkillsModule from "$lib/features/skills/components/SkillsModule.svelte";
+import { managedToolIds, tools } from "$lib/features/tools/index.js";
 import { setModulePerformanceDiagnosticsEnabledState } from "$lib/shared/diagnostics/modulePerformance.js";
 import { locale } from "$lib/shared/i18n/index.js";
 
@@ -80,6 +87,8 @@ function createDeferred() {
 describe("SkillsModule local-source behavior", () => {
   beforeEach(() => {
     locale.set("en");
+    tools.set([{ id: "codex", name: "Codex", detected: true }]);
+    managedToolIds.set(["codex"]);
     toolStoreMocks.loadTools.mockResolvedValue([]);
     settingsApiMocks.getSkillPerformanceDiagnosticsEnabled.mockResolvedValue(false);
     loggingApiMocks.writeSkillPerformanceLog.mockResolvedValue(undefined);
@@ -225,6 +234,77 @@ describe("SkillsModule local-source behavior", () => {
     expect(screen.getByRole("button", { name: /Shared Skill/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Tool Only/ })).not.toBeInTheDocument();
     expect(skillApiMocks.listGenericSkills).not.toHaveBeenCalled();
+  });
+
+  it("filters stale inventory snapshots to the current managed tools", async () => {
+    tools.set([
+      { id: "codex", name: "Codex", detected: true },
+      { id: "cursor", name: "Cursor", detected: true },
+    ]);
+    managedToolIds.set(["cursor"]);
+    inventoryMocks.getSkillInventory.mockResolvedValueOnce({
+      skills: [
+        {
+          name: "disabled-tool-only",
+          display_name: "Disabled Tool Only",
+          description: "Only present in the disabled tool snapshot",
+          path: "/codex/disabled-tool-only",
+          tool_statuses: [
+            { tool_id: "codex", status: "installed", path: "/codex/disabled-tool-only", path_origin: "tool" },
+          ],
+        },
+        {
+          name: "cursor-skill",
+          display_name: "Cursor Skill",
+          description: "Still managed",
+          path: "/cursor/cursor-skill",
+          tool_statuses: [
+            { tool_id: "cursor", status: "installed", path: "/cursor/cursor-skill", path_origin: "tool" },
+          ],
+        },
+      ],
+    });
+
+    render(SkillsModule);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Cursor Skill/ })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /Disabled Tool Only/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cursor Skill/ })).toHaveTextContent("Cursor");
+    expect(screen.getByRole("button", { name: /Cursor Skill/ })).not.toHaveTextContent("Codex");
+  });
+
+  it("uses the current managed source path for same-name stale inventory entries", async () => {
+    tools.set([
+      { id: "codex", name: "Codex", detected: true },
+      { id: "cursor", name: "Cursor", detected: true },
+    ]);
+    managedToolIds.set(["cursor"]);
+    inventoryMocks.getSkillInventory.mockResolvedValueOnce({
+      skills: [
+        {
+          name: "same-name-skill",
+          display_name: "Same Name Skill",
+          description: "Same name across disabled and managed tools",
+          path: "/codex/same-name-skill",
+          tool_statuses: [
+            { tool_id: "codex", status: "installed", path: "/codex/same-name-skill", path_origin: "tool" },
+            { tool_id: "cursor", status: "installed", path: "/cursor/same-name-skill", path_origin: "tool" },
+          ],
+        },
+      ],
+    });
+
+    render(SkillsModule);
+
+    const card = await screen.findByRole("button", { name: /Same Name Skill/ });
+    expect(card).toHaveTextContent("Cursor");
+    expect(card).not.toHaveTextContent("Codex");
+
+    await fireEvent.click(card);
+
+    expect(await screen.findByTestId("skill-viewer-stub")).toHaveAttribute("data-skill-path", "/cursor/same-name-skill");
   });
 
   it("filters visible Skill cards from the page-header search", async () => {

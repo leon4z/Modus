@@ -136,11 +136,42 @@
       && normalized !== "noVariant";
   }
 
+  function currentManagedToolIdSet() {
+    return new Set($managedTools.map((/** @type {any} */ tool) => String(tool.id)));
+  }
+
+  /** @param {any[]} statuses */
+  function filterStatusesForManagedTools(statuses) {
+    const managedIds = currentManagedToolIdSet();
+    return (statuses || []).filter((/** @type {any} */ status) => {
+      const toolId = status?.tool_id || status?.toolId;
+      return toolId && managedIds.has(String(toolId));
+    });
+  }
+
+  /** @param {any} status */
+  function contentPathForInventoryStatus(status) {
+    const pathOrigin = status?.path_origin || status?.pathOrigin;
+    const targetPath = status?.symlink_target || status?.symlinkTarget || status?.target_path || status?.targetPath || "";
+    if (pathOrigin === "generic" && targetPath) return targetPath;
+    return status?.path || targetPath || "";
+  }
+
+  /** @param {any[]} statuses */
+  function primaryPathForToolStatuses(statuses) {
+    const status = statuses.find((/** @type {any} */ item) =>
+      isSkillStatusInstalledLike(item?.status)
+        && typeof contentPathForInventoryStatus(item) === "string"
+        && contentPathForInventoryStatus(item).length > 0
+    );
+    return contentPathForInventoryStatus(status) || "";
+  }
+
   /** @param {Array<any>} entries */
   function mapInventoryToOverview(entries) {
     const sourceSkills = Array.isArray(entries) ? entries : [];
     return sourceSkills.map((/** @type {any} */ entry) => {
-      const toolStatuses = entry.tool_statuses || entry.toolStatuses || [];
+      const toolStatuses = filterStatusesForManagedTools(entry.tool_statuses || entry.toolStatuses || []);
       const installed_in = toolStatuses
         .filter((/** @type {any} */ ts) => {
           const hasPath = typeof ts?.path === "string" && ts.path.length > 0;
@@ -157,14 +188,14 @@
         name: entry.name,
         display_name: entry.display_name || entry.name,
         description: entry.description || "",
-        path: entry.path || "",
+        path: primaryPathForToolStatuses(toolStatuses),
         installed_in,
         tool_statuses: toolStatuses,
         has_variants: entry.hasVariants || entry.has_variants || [],
         variant_paths: entry.variantPaths || entry.variant_paths || {},
         package: entry.package || null,
       };
-    });
+    }).filter(inventoryEntryHasSource);
   }
 
   /** @param {any} item */
@@ -200,16 +231,16 @@
   function applySingleInventoryEntry(entry) {
     if (!entry?.name) return null;
     const mapped = mapInventoryToOverview([entry])[0] || null;
-    if (!mapped) return null;
-    if (inventoryEntryHasSource(entry)) {
-      const replaced = skillsOverview.some((/** @type {any} */ item) => item.name === mapped.name);
-      skillsOverview = (replaced
-        ? skillsOverview.map((/** @type {any} */ item) => item.name === mapped.name ? mapped : item)
-        : [...skillsOverview, mapped]
-      ).sort(compareByName);
-    } else {
-      skillsOverview = skillsOverview.filter((/** @type {any} */ item) => item.name !== mapped.name);
+    if (!mapped) {
+      skillsOverview = skillsOverview.filter((/** @type {any} */ item) => item.name !== entry.name);
+      genericSkills = deriveSharedSkillsFromOverview(skillsOverview);
+      return null;
     }
+    const replaced = skillsOverview.some((/** @type {any} */ item) => item.name === mapped.name);
+    skillsOverview = (replaced
+      ? skillsOverview.map((/** @type {any} */ item) => item.name === mapped.name ? mapped : item)
+      : [...skillsOverview, mapped]
+    ).sort(compareByName);
     genericSkills = deriveSharedSkillsFromOverview(skillsOverview);
     if (viewingSkill?.name === mapped.name) {
       viewingSkill = {

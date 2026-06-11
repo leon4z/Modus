@@ -303,6 +303,49 @@ describe("SettingsModule", () => {
     expect(screen.queryByLabelText("Add Custom Tool")).not.toBeInTheDocument();
   });
 
+  it("invalidates Skill inventory before and after disabling a managed tool is saved", async () => {
+    activeSettingsTab.set("tools");
+    render(SettingsModule);
+
+    const codexRow = await expandSettingsToolRow("codex");
+    apiMocks.setManagedTools.mockClear();
+    skillInventoryMocks.invalidateSkillInventory.mockClear();
+
+    await fireEvent.click(within(codexRow).getByRole("checkbox"));
+
+    await waitFor(() => {
+      expect(apiMocks.setManagedTools).toHaveBeenCalledWith(["cursor"]);
+    });
+    expect(get(toolStores.managedToolIds)).toEqual(["cursor"]);
+    expect(skillInventoryMocks.invalidateSkillInventory).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates Skill inventory again after enabling a managed tool is saved", async () => {
+    activeSettingsTab.set("tools");
+    toolStores.managedToolIds.set(["cursor"]);
+    const saveDeferred = createDeferred();
+    apiMocks.setManagedTools.mockReturnValueOnce(saveDeferred.promise);
+    render(SettingsModule);
+
+    const codexRow = await expandSettingsToolRow("codex");
+    apiMocks.setManagedTools.mockClear();
+    skillInventoryMocks.invalidateSkillInventory.mockClear();
+
+    await fireEvent.click(within(codexRow).getByRole("checkbox"));
+
+    await waitFor(() => {
+      expect(apiMocks.setManagedTools).toHaveBeenCalledWith(["cursor", "codex"]);
+    });
+    expect(get(toolStores.managedToolIds)).toEqual(["cursor", "codex"]);
+    expect(skillInventoryMocks.invalidateSkillInventory).toHaveBeenCalledTimes(1);
+
+    saveDeferred.resolve();
+
+    await waitFor(() => {
+      expect(skillInventoryMocks.invalidateSkillInventory).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("saves translation provider settings and stores a new API key separately", async () => {
     apiMocks.getTranslationProviderConfig.mockResolvedValue({
       enabled: true,

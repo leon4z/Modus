@@ -4,6 +4,12 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.9 - 2026-06-11
+
+- Fixed Skill inventory refresh after changing managed tool access so disabled tools disappear from Skills immediately and newly enabled tools refresh again after settings are saved.
+- Filtered stale Skill inventory snapshots by the current managed tool scope across Skill lists and detail views.
+- Prevented same-name Skills from opening a stale source path that belongs to a disabled tool.
+
 ## 1.0.8 - 2026-06-11
 
 - Added cached, read-only Skill Markdown translation backed by configurable OpenAI-compatible or Anthropic Messages-compatible providers.

@@ -12,6 +12,6 @@
 </script>
 
 {#if skill}
-  <div data-testid="skill-viewer-stub">Viewing {skill.display_name || skill.name}</div>
+  <div data-testid="skill-viewer-stub" data-skill-path={skill.path || ""}>Viewing {skill.display_name || skill.name}</div>
   <button type="button" data-testid="skill-viewer-stub-change" onclick={triggerChanged} hidden>change</button>
 {/if}

@@ -839,6 +839,66 @@ describe("SkillViewer local-source behavior", () => {
     expect(await screen.findByRole("button", { name: "卸载" })).toBeInTheDocument();
   });
 
+  it("filters stale fetched inventory statuses to the current managed tools in content sources", async () => {
+    setToolsForTest([
+      { id: "codex", name: "Codex", detected: true, skills_dir: "/tmp/codex-skills" },
+      { id: "cursor", name: "Cursor", detected: true, skills_dir: "/tmp/cursor-skills" },
+    ]);
+    managedToolIds.set(["cursor"]);
+    apiMocks.listSkillFiles.mockResolvedValue([{ relative_path: "SKILL.md", is_dir: false }]);
+    apiMocks.readSkillContent.mockResolvedValue({ skill_md_content: "# Cursor" });
+    apiMocks.scanSkillInventory.mockResolvedValue({
+      skills: [
+        createSkill({
+          path: "/tmp/codex-skills/demo-skill",
+          tool_statuses: [
+            {
+              tool_id: "codex",
+              tool_name: "Codex",
+              status: "installed",
+              path: "/tmp/codex-skills/demo-skill",
+              path_origin: "tool",
+            },
+            {
+              tool_id: "cursor",
+              tool_name: "Cursor",
+              status: "installed",
+              path: "/tmp/cursor-skills/demo-skill",
+              path_origin: "tool",
+            },
+          ],
+        }),
+      ],
+    });
+
+    render(SkillViewer, {
+      skill: createSkill({
+        path: "/tmp/cursor-skills/demo-skill",
+        tool_statuses: [
+          {
+            tool_id: "cursor",
+            tool_name: "Cursor",
+            status: "installed",
+            path: "/tmp/cursor-skills/demo-skill",
+            path_origin: "tool",
+          },
+        ],
+      }),
+      initialTab: "content",
+      onClose: vi.fn(),
+      onDelete: vi.fn(),
+      onChanged: vi.fn(),
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.scanSkillInventory).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("group", { name: "来源" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Codex" })).not.toBeInTheDocument();
+    expect(apiMocks.listSkillFiles).toHaveBeenCalledWith("/tmp/cursor-skills/demo-skill");
+    expect(document.querySelector(".file-viewer-subtitle")?.textContent).toBe("/tmp/cursor-skills/demo-skill/SKILL.md");
+  });
+
   it("labels duplicate tool links separately from their shared target", async () => {
     const user = userEvent.setup();
     setToolsForTest([

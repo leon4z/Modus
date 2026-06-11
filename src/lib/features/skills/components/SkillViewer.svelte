@@ -354,7 +354,20 @@
 
   /** @param {any} skillEntry */
   function getRawToolStatuses(skillEntry) {
-    return fetchedToolStatuses || skillEntry?.tool_statuses || skillEntry?.toolStatuses || [];
+    return filterStatusesForManagedTools(fetchedToolStatuses || skillEntry?.tool_statuses || skillEntry?.toolStatuses || []);
+  }
+
+  function currentManagedToolIdSet() {
+    return new Set($managedTools.map((/** @type {any} */ tool) => String(tool.id)));
+  }
+
+  /** @param {any[]} statuses */
+  function filterStatusesForManagedTools(statuses) {
+    const managedIds = currentManagedToolIdSet();
+    return (Array.isArray(statuses) ? statuses : []).filter((/** @type {any} */ status) => {
+      const toolId = status?.tool_id || status?.toolId;
+      return toolId && managedIds.has(String(toolId));
+    });
   }
 
   /**
@@ -551,7 +564,7 @@
     if (!skill) return [];
     const displayedTools = $managedTools.filter((tool) => tool.detected);
     const displayedToolIds = new Set(displayedTools.map((tool) => tool.id));
-    const inventoryStatuses = fetchedToolStatuses || skill.tool_statuses || skill.toolStatuses;
+    const inventoryStatuses = filterStatusesForManagedTools(fetchedToolStatuses || skill.tool_statuses || skill.toolStatuses);
     if (Array.isArray(inventoryStatuses) && inventoryStatuses.length > 0) {
       const mappedByToolId = new Map();
       for (const ts of inventoryStatuses) {
@@ -977,7 +990,7 @@
         if (liveIdentity !== requestIdentity) return;
         const entry = inv?.skills?.find((/** @type {any} */ item) => item.name === skillName);
         const statuses = entry?.toolStatuses || entry?.tool_statuses;
-        if (Array.isArray(statuses)) fetchedToolStatuses = statuses;
+        if (Array.isArray(statuses)) fetchedToolStatuses = filterStatusesForManagedTools(statuses);
       }).catch(() => {});
     }
   });
@@ -1352,8 +1365,13 @@
         : (await getSkillInventory())?.skills?.find((/** @type {any} */ item) => item.name === skill.name);
       const statuses = entry?.toolStatuses || entry?.tool_statuses;
       if (Array.isArray(statuses)) {
-        fetchedToolStatuses = statuses;
-        return entry;
+        const filteredStatuses = filterStatusesForManagedTools(statuses);
+        fetchedToolStatuses = filteredStatuses;
+        return {
+          ...entry,
+          tool_statuses: filteredStatuses,
+          toolStatuses: filteredStatuses,
+        };
       }
       if (options.force) throw $t("skills.viewer.refresh_after_write_failed");
     } catch {
@@ -1366,8 +1384,8 @@
   async function fetchLatestToolStatuses(options = {}) {
     const entry = await fetchLatestSkillEntry(options);
     const statuses = entry?.toolStatuses || entry?.tool_statuses;
-    if (Array.isArray(statuses)) return statuses;
-    return fetchedToolStatuses || skill?.tool_statuses || skill?.toolStatuses || [];
+    if (Array.isArray(statuses)) return filterStatusesForManagedTools(statuses);
+    return filterStatusesForManagedTools(fetchedToolStatuses || skill?.tool_statuses || skill?.toolStatuses || []);
   }
 
   /** @param {number} value */

@@ -770,8 +770,10 @@
       nextIds.push(toolId);
     }
     managedToolIds.set(nextIds);
+    invalidateSkillInventory();
     try {
       await setManagedTools(nextIds);
+      invalidateSkillInventory();
       logSettingsEvent({ action: "settings_tool_management_update", result: "ok", toolId });
     } catch (/** @type {any} */ error) {
       logSettingsEvent({ action: "settings_tool_management_update", result: "failed", toolId, error });
@@ -1292,7 +1294,9 @@
     }
     if (sameStringList(nextManagedIds, $managedToolIds)) return;
     managedToolIds.set(nextManagedIds);
+    invalidateSkillInventory();
     await setManagedTools(nextManagedIds);
+    invalidateSkillInventory();
   }
 
   /** @param {string} toolId @param {string} field @param {any} value */
@@ -1547,7 +1551,9 @@
     try {
       await removeCustomTool(toolId);
       const nextManagedIds = $managedToolIds.filter((id) => id !== toolId);
+      const removedFromManagedScope = nextManagedIds.length !== $managedToolIds.length;
       managedToolIds.set(nextManagedIds);
+      if (removedFromManagedScope) invalidateSkillInventory();
       logSettingsEvent({ action: "settings_custom_tool_delete", result: "ok", toolId });
       customTools = customTools.filter((tool) => tool.id !== toolId);
       customToolsBaseline = JSON.parse(JSON.stringify(customTools));
