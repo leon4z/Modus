@@ -2,3 +2,4 @@
 export { default as SettingsModule } from "./components/SettingsModule.svelte";
 export * from "./api/settings.js";
 export * from "./stores/settingsPage.js";
+export * from "./stores/translationProvider.js";

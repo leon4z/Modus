@@ -40,6 +40,7 @@ const apiMocks = vi.hoisted(() => ({
   getSkillPerformanceDiagnosticsEnabled: vi.fn(),
   getToolCapabilityOverrides: vi.fn(),
   getToolPaths: vi.fn(),
+  getTranslationProviderConfig: vi.fn(),
   listApplicationLogs: vi.fn(),
   listModulePerformanceLogs: vi.fn(),
   readApplicationLog: vi.fn(),
@@ -53,6 +54,9 @@ const apiMocks = vi.hoisted(() => ({
   setTheme: vi.fn(),
   setToolCapabilityOverrides: vi.fn(),
   setToolPath: vi.fn(),
+  setTranslationProviderConfig: vi.fn(),
+  setTranslationApiKey: vi.fn(),
+  testTranslationProvider: vi.fn(),
   writeModulePerformanceLog: vi.fn(),
 }));
 
@@ -149,6 +153,16 @@ import { modulePerformanceSummaries, setModulePerformanceDiagnosticsEnabledState
 import { languagePreference, locale } from "$lib/shared/i18n/index.js";
 
 describe("SettingsModule", () => {
+  function createDeferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
   function defaultAppUpdateState(overrides = {}) {
     return {
       status: "idle",
@@ -219,6 +233,13 @@ describe("SettingsModule", () => {
       usesSandboxTools: false,
       usesRealTools: true,
     });
+    apiMocks.getTranslationProviderConfig.mockResolvedValue({
+      enabled: false,
+      provider: "openai-compatible",
+      baseUrl: "https://api.openai.com/v1",
+      model: "",
+      apiKeyConfigured: false,
+    });
     apiMocks.getSkillPerformanceDiagnosticsEnabled.mockResolvedValue(false);
     apiMocks.setManagedTools.mockResolvedValue(undefined);
     apiMocks.setModulePerformanceDiagnosticsEnabled.mockResolvedValue(undefined);
@@ -228,6 +249,21 @@ describe("SettingsModule", () => {
     apiMocks.setToolCapabilityOverrides.mockResolvedValue(undefined);
     apiMocks.setTheme.mockResolvedValue(undefined);
     apiMocks.setLanguage.mockResolvedValue(undefined);
+    apiMocks.setTranslationProviderConfig.mockResolvedValue({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.openai.com/v1",
+      model: "model-a",
+      apiKeyConfigured: false,
+    });
+    apiMocks.setTranslationApiKey.mockResolvedValue({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.openai.com/v1",
+      model: "model-a",
+      apiKeyConfigured: true,
+    });
+    apiMocks.testTranslationProvider.mockResolvedValue({ content: "你好", targetLanguage: "zh-CN" });
     apiMocks.listApplicationLogs.mockResolvedValue([{ id: "app-2026-05-27.log", label: "2026-05-27" }]);
     apiMocks.readApplicationLog.mockResolvedValue({ id: "app-2026-05-27.log", label: "2026-05-27", content: "{\"level\":\"info\"}\n", truncated: false });
     apiMocks.listModulePerformanceLogs.mockResolvedValue([{ id: "module-performance-2026-05-27.log", label: "2026-05-27" }]);
@@ -265,6 +301,138 @@ describe("SettingsModule", () => {
 
     await fireEvent.click(screen.getByRole("button", { name: "General" }));
     expect(screen.queryByLabelText("Add Custom Tool")).not.toBeInTheDocument();
+  });
+
+  it("saves translation provider settings and stores a new API key separately", async () => {
+    apiMocks.getTranslationProviderConfig.mockResolvedValue({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://translation.example/v1",
+      model: "model-translate",
+      apiKeyConfigured: false,
+    });
+    apiMocks.setTranslationProviderConfig.mockImplementation(async ({ enabled, provider, baseUrl, model }) => ({
+      enabled,
+      provider,
+      baseUrl,
+      model,
+      apiKeyConfigured: false,
+    }));
+    apiMocks.setTranslationApiKey.mockImplementation(async () => ({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://translation.example/v1",
+      model: "model-translate",
+      apiKeyConfigured: true,
+    }));
+    render(SettingsModule);
+
+    await waitFor(() => {
+      expect(apiMocks.getTranslationProviderConfig).toHaveBeenCalled();
+    });
+
+    const row = screen.getByText("Markdown Translation").closest(".settings-list-row");
+    expect(row).toBeTruthy();
+    const section = within(/** @type {HTMLElement} */ (row));
+
+    expect(section.queryByDisplayValue("model-translate")).not.toBeInTheDocument();
+    await fireEvent.click(section.getByRole("button", { name: "Edit translation settings" }));
+
+    await waitFor(() => {
+      expect(section.getByDisplayValue("model-translate")).toBeInTheDocument();
+    });
+    const keyInput = section.getByPlaceholderText("Enter new API key");
+    keyInput.value = "secret-key";
+    await fireEvent.input(keyInput);
+    expect(section.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(section.getByRole("button", { name: "Test" })).toBeInTheDocument();
+    await fireEvent.click(section.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(apiMocks.setTranslationProviderConfig).toHaveBeenCalledWith({
+        enabled: true,
+        provider: "openai-compatible",
+        baseUrl: "https://translation.example/v1",
+        model: "model-translate",
+      });
+      expect(apiMocks.setTranslationApiKey).toHaveBeenCalledWith("secret-key");
+    });
+    expect(section.getByText("API key configured")).toBeInTheDocument();
+    expect(section.getByDisplayValue("••••••••••••")).toBeInTheDocument();
+    expect(section.queryByRole("button", { name: "Clear key" })).not.toBeInTheDocument();
+  });
+
+  it("tests translation provider from the icon action after saving dirty settings", async () => {
+    const testDeferred = createDeferred();
+    apiMocks.testTranslationProvider.mockReturnValueOnce(testDeferred.promise);
+    apiMocks.getTranslationProviderConfig.mockResolvedValue({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://translation.example/v1",
+      model: "model-translate",
+      apiKeyConfigured: true,
+    });
+    apiMocks.setTranslationProviderConfig.mockImplementation(async ({ enabled, provider, baseUrl, model }) => ({
+      enabled,
+      provider,
+      baseUrl,
+      model,
+      apiKeyConfigured: true,
+    }));
+    render(SettingsModule);
+
+    const row = await screen.findByText("Markdown Translation");
+    const rowElement = /** @type {HTMLElement} */ (row.closest(".settings-list-row"));
+    const section = within(rowElement);
+    await fireEvent.click(section.getByRole("button", { name: "Edit translation settings" }));
+
+    const modelInput = await section.findByDisplayValue("model-translate");
+    modelInput.value = "model-next";
+    await fireEvent.input(modelInput);
+    await fireEvent.click(section.getByRole("button", { name: "Test" }));
+
+    await waitFor(() => {
+      expect(rowElement.querySelector(".settings-translation-message")?.textContent).toBe("Testing...");
+    });
+    await waitFor(() => {
+      expect(apiMocks.setTranslationProviderConfig).toHaveBeenCalledWith({
+        enabled: true,
+        provider: "openai-compatible",
+        baseUrl: "https://translation.example/v1",
+        model: "model-next",
+      });
+      expect(apiMocks.testTranslationProvider).toHaveBeenCalled();
+    });
+    testDeferred.resolve({ content: "你好", targetLanguage: "zh-CN" });
+    expect(await section.findByText("Test passed")).toBeInTheDocument();
+  });
+
+  it("re-renders translation provider status messages when the language changes", async () => {
+    locale.set("zh");
+    languagePreference.set("zh");
+    apiMocks.getTranslationProviderConfig.mockResolvedValue({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://translation.example/v1",
+      model: "model-translate",
+      apiKeyConfigured: true,
+    });
+    render(SettingsModule);
+
+    const row = await screen.findByText("Markdown 翻译");
+    const rowElement = /** @type {HTMLElement} */ (row.closest(".settings-list-row"));
+    const section = within(rowElement);
+    await fireEvent.click(section.getByRole("button", { name: "编辑翻译设置" }));
+    await fireEvent.click(section.getByRole("button", { name: "测试" }));
+
+    expect(await section.findByText("测试通过")).toBeInTheDocument();
+    locale.set("en");
+    languagePreference.set("en");
+
+    await waitFor(() => {
+      expect(section.getByText("Test passed")).toBeInTheDocument();
+    });
+    expect(section.queryByText("测试通过")).not.toBeInTheDocument();
   });
 
   it("shows backend-provided presence badges for built-in tools only", async () => {

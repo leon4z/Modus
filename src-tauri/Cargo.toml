@@ -1,6 +1,6 @@
 [package]
 name = "modus"
-version = "1.0.7"
+version = "1.0.8"
 default-run = "Modus"
 description = "A macOS desktop app for managing local AI coding tool rules, skills, configs, and MCP settings."
 authors = ["you"]
@@ -38,6 +38,7 @@ semver = "1"
 window-vibrancy = "0.7.1"
 sha2 = "0.10"
 serde_yaml = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 tempfile = "3"

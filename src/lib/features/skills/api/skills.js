@@ -43,6 +43,14 @@ export async function writeSkillFile(skillPath, relativePath, content) {
   return invoke("write_skill_file", { skillPath, relativePath, content });
 }
 
+/**
+ * @param {string} markdown
+ * @param {string} targetLanguage
+ */
+export async function translateMarkdown(markdown, targetLanguage) {
+  return invoke("translate_markdown", { markdown, targetLanguage });
+}
+
 export async function listGenericSkills() {
   return invoke("list_generic_skills");
 }

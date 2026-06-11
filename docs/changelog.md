@@ -4,6 +4,12 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.8 - 2026-06-11
+
+- Added cached, read-only Skill Markdown translation backed by configurable OpenAI-compatible or Anthropic Messages-compatible providers.
+- Added Markdown translation provider settings with separate API key storage, explicit provider type selection, and connection testing.
+- Kept translated Skill views temporary and source-safe while preserving the original file title and path.
+
 ## 1.0.7 - 2026-06-08
 
 - Added automatic in-session app update checks so a running app can discover new releases without requiring a restart.

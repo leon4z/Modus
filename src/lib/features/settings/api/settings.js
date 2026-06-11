@@ -52,3 +52,29 @@ export async function getModulePerformanceDiagnosticsEnabled() {
 export async function setModulePerformanceDiagnosticsEnabled(enabled) {
   return invoke("set_module_performance_diagnostics_enabled", { enabled });
 }
+
+export async function getTranslationProviderConfig() {
+  return invoke("get_translation_provider_config");
+}
+
+/**
+ * @param {{ enabled?: boolean, provider?: string, baseUrl?: string, model?: string }} config
+ */
+export async function setTranslationProviderConfig(config) {
+  return invoke("set_translation_provider_config", { config });
+}
+
+/**
+ * @param {string} apiKey
+ */
+export async function setTranslationApiKey(apiKey) {
+  return invoke("set_translation_api_key", { apiKey });
+}
+
+export async function clearTranslationApiKey() {
+  return invoke("clear_translation_api_key");
+}
+
+export async function testTranslationProvider() {
+  return invoke("test_translation_provider");
+}

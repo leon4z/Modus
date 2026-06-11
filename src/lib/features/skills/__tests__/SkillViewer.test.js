@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   listSkillFiles: vi.fn(),
   readSkillFile: vi.fn(),
   writeSkillFile: vi.fn(),
+  translateMarkdown: vi.fn(),
   scanSkillInventory: vi.fn(),
   scanSkillInventoryEntry: vi.fn(),
   previewInstall: vi.fn(),
@@ -35,8 +36,30 @@ const loggingApiMocks = vi.hoisted(() => ({
 vi.mock("$lib/features/skills/api/skills.js", () => apiMocks);
 vi.mock("$lib/features/rules/index.js", () => ({ diffRules: vi.fn() }));
 vi.mock("$lib/shared/logging/api.js", () => loggingApiMocks);
+vi.mock("$lib/features/settings/index.js", async (importOriginal) => {
+  const original = await importOriginal();
+  const { writable } = await vi.importActual("svelte/store");
+  const defaultState = {
+    enabled: true,
+    provider: "openai-compatible",
+    baseUrl: "https://api.openai.com/v1",
+    model: "model-a",
+    apiKeyConfigured: true,
+  };
+  const translationProviderState = writable(defaultState);
+  return {
+    ...original,
+    translationProviderState,
+    refreshTranslationProviderState: vi.fn(async () => defaultState),
+    setTranslationProviderState: vi.fn((next) => {
+      translationProviderState.set({ ...defaultState, ...(next || {}) });
+      return { ...defaultState, ...(next || {}) };
+    }),
+  };
+});
 
 import SkillViewer from "$lib/features/skills/components/SkillViewer.svelte";
+import { translationProviderState } from "$lib/features/settings/index.js";
 import { invalidateSkillInventory } from "$lib/features/skills/queries/skillInventoryQuery.js";
 import { managedToolIds, tools } from "$lib/features/tools/index.js";
 import { setModulePerformanceDiagnosticsEnabledState } from "$lib/shared/diagnostics/modulePerformance.js";
@@ -112,6 +135,13 @@ describe("SkillViewer local-source behavior", () => {
     vi.clearAllMocks();
     invalidateSkillInventory();
     locale.set("zh");
+    translationProviderState.set({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.openai.com/v1",
+      model: "model-a",
+      apiKeyConfigured: true,
+    });
     setModulePerformanceDiagnosticsEnabledState(false);
     setToolsForTest([
       { id: "codex", name: "Codex", detected: true, skills_dir: "/tmp/codex-skills" },
@@ -121,6 +151,7 @@ describe("SkillViewer local-source behavior", () => {
     apiMocks.readSkillContent.mockResolvedValue({ skill_md_content: "# Demo" });
     apiMocks.readSkillFile.mockResolvedValue("# Demo");
     apiMocks.writeSkillFile.mockResolvedValue(undefined);
+    apiMocks.translateMarkdown.mockResolvedValue({ content: "# 演示", targetLanguage: "zh-CN" });
     apiMocks.scanSkillInventory.mockResolvedValue({ skills: [] });
     apiMocks.scanSkillInventoryEntry.mockImplementation(async (skillName) => {
       const inventory = await apiMocks.scanSkillInventory();
@@ -147,6 +178,87 @@ describe("SkillViewer local-source behavior", () => {
     cleanup();
     setToolsForTest([]);
     managedToolIds.set([]);
+  });
+
+  it("shows markdown translation action between read/source controls and edit", async () => {
+    apiMocks.listSkillFiles.mockResolvedValue([{ relative_path: "SKILL.md", is_dir: false }]);
+    apiMocks.readSkillContent.mockResolvedValue({ skill_md_content: "# Demo" });
+    render(SkillViewer, { props: { skill: createSkill(), initialTab: "content" } });
+
+    const translateButton = await screen.findByRole("button", { name: "翻译 Markdown" });
+    const sourceButton = screen.getByRole("button", { name: "源码" });
+    const editButton = screen.getByRole("button", { name: "编辑" });
+
+    expect(translateButton.textContent?.trim()).toBe("");
+    expect(sourceButton.compareDocumentPosition(translateButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(translateButton.compareDocumentPosition(editButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("marks markdown translation action active while choosing a target", async () => {
+    apiMocks.listSkillFiles.mockResolvedValue([{ relative_path: "SKILL.md", is_dir: false }]);
+    apiMocks.readSkillContent.mockResolvedValue({ skill_md_content: "# Demo" });
+    render(SkillViewer, { props: { skill: createSkill(), initialTab: "content" } });
+
+    const translateButton = await screen.findByRole("button", { name: "翻译 Markdown" });
+    expect(translateButton).not.toHaveClass("translation-toolbar-btn--active");
+
+    await fireEvent.click(translateButton);
+
+    expect(translateButton).toHaveClass("translation-toolbar-btn--active");
+    expect(translateButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("renders markdown translation as a cached read-only view without changing the file title", async () => {
+    apiMocks.listSkillFiles.mockResolvedValue([{ relative_path: "SKILL.md", is_dir: false }]);
+    apiMocks.readSkillContent.mockResolvedValue({ skill_md_content: "# Demo" });
+    apiMocks.translateMarkdown.mockResolvedValue({ content: "# 演示\n\n翻译内容", targetLanguage: "zh-CN" });
+    render(SkillViewer, { props: { skill: createSkill(), initialTab: "content" } });
+
+    await fireEvent.click(await screen.findByRole("button", { name: "翻译 Markdown" }));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "译为中文" }));
+
+    await waitFor(() => {
+      expect(apiMocks.translateMarkdown).toHaveBeenCalledWith("# Demo", "zh-CN");
+    });
+    expect((await screen.findAllByText("SKILL.md")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("~/.codex/skills/demo-skill/SKILL.md")).toBeInTheDocument();
+    expect(screen.queryByText("SKILL.zh-CN.translation.md")).not.toBeInTheDocument();
+    expect(screen.queryByText("临时")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "翻译 Markdown" })).toHaveClass("translation-toolbar-btn--active");
+    expect(screen.getByRole("button", { name: /返回原文/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(apiMocks.writeSkillFile).not.toHaveBeenCalled();
+  });
+
+  it("hides markdown translation action for non-markdown files", async () => {
+    apiMocks.listSkillFiles.mockResolvedValue([{ relative_path: "notes.txt", is_dir: false }]);
+    apiMocks.readSkillContent.mockResolvedValue({});
+    apiMocks.readSkillFile.mockResolvedValue("plain text");
+    render(SkillViewer, { props: { skill: createSkill(), initialTab: "content" } });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("notes.txt").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByRole("button", { name: "翻译 Markdown" })).not.toBeInTheDocument();
+  });
+
+  it("hides markdown translation action when translation provider is disabled", async () => {
+    translationProviderState.set({
+      enabled: false,
+      provider: "openai-compatible",
+      baseUrl: "https://api.openai.com/v1",
+      model: "model-a",
+      apiKeyConfigured: true,
+    });
+    apiMocks.listSkillFiles.mockResolvedValue([{ relative_path: "SKILL.md", is_dir: false }]);
+    apiMocks.readSkillContent.mockResolvedValue({ skill_md_content: "# Demo" });
+    render(SkillViewer, { props: { skill: createSkill(), initialTab: "content" } });
+
+    await screen.findByRole("button", { name: "编辑" });
+
+    expect(screen.queryByRole("button", { name: "翻译 Markdown" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
   });
 
   it("stays inert when no Skill is selected", async () => {

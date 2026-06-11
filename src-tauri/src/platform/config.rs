@@ -48,6 +48,32 @@ pub struct AppConfig {
     pub skill_performance_diagnostics_enabled: bool,
     #[serde(default)]
     pub app_update_state: AppUpdateState,
+    #[serde(default)]
+    pub translation_provider: TranslationProviderConfig,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationProviderConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_translation_provider")]
+    pub provider: String,
+    #[serde(default = "default_translation_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub model: String,
+}
+
+impl Default for TranslationProviderConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_translation_provider(),
+            base_url: default_translation_base_url(),
+            model: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
@@ -198,6 +224,14 @@ fn default_theme() -> String {
     "system".to_string()
 }
 
+fn default_translation_provider() -> String {
+    "openai-compatible".to_string()
+}
+
+fn default_translation_base_url() -> String {
+    "https://api.openai.com/v1".to_string()
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CustomTool {
     #[serde(default)]
@@ -271,6 +305,7 @@ pub fn default_config() -> AppConfig {
         module_performance_diagnostics_enabled: Some(false),
         skill_performance_diagnostics_enabled: false,
         app_update_state: AppUpdateState::default(),
+        translation_provider: TranslationProviderConfig::default(),
     }
 }
 

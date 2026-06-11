@@ -8,12 +8,14 @@
   import { onDestroy, onMount, tick } from "svelte";
   import {
     AlertTriangle,
+    Beaker,
     ChevronDown,
     ChevronRight,
     Check,
     Download,
     FileText,
     Folder,
+    Languages,
     Pencil,
     Plus,
     RotateCcw,
@@ -32,11 +34,16 @@
     skipAvailableAppUpdate,
   } from "$lib/features/appUpdates/index.js";
   import { applyLanguagePreference, languagePreference, t } from "$lib/shared/i18n/index.js";
+  import { setTranslationProviderState } from "$lib/features/settings/stores/translationProvider.js";
   import { getVisualVerificationState, isVisualVerificationMode } from "$lib/dev/visualVerification/fixtures.js";
   import { logAppEvent } from "$lib/shared/logging/appLogger.js";
   import {
     getRuntimeInfo,
     getModulePerformanceDiagnosticsEnabled,
+    getTranslationProviderConfig,
+    setTranslationProviderConfig,
+    setTranslationApiKey,
+    testTranslationProvider,
     setModulePerformanceDiagnosticsEnabled,
     setLanguage,
     setTheme,
@@ -100,6 +107,14 @@
   let customTools = $state([]);
   let modulePerformanceDiagnosticsEnabled = $state(false);
   let modulePerformancePreferenceVersion = 0;
+  let translationProviderConfig = $state(defaultTranslationProviderConfig());
+  let translationProviderOriginal = $state(defaultTranslationProviderConfig());
+  let translationApiKeyDraft = $state("");
+  let translationApiKeyFocused = $state(false);
+  let translationConfigSaving = $state(false);
+  let translationConfigTesting = $state(false);
+  let translationConfigMsg = $state(/** @type {{ key: string, vars?: Record<string, any> } | null} */ (null));
+  let translationSettingsExpanded = $state(false);
   /** @type {null | "application" | "modulePerformance"} */
   let activeLogViewer = $state(null);
   /** @type {any[]} */
@@ -137,6 +152,17 @@
   let showInstallUpdateAction = $derived(Boolean($appUpdateState.availableUpdate?.version) && !appUpdateBusy && $appUpdateState.status !== "restart_needed");
   let showSkipUpdateAction = $derived(showInstallUpdateAction);
   let showRestartUpdateAction = $derived($appUpdateState.status === "restart_needed");
+  let translationApiKeyDisplayValue = $derived(
+    translationApiKeyDraft || (!translationApiKeyFocused && translationProviderConfig.apiKeyConfigured ? "••••••••••••" : "")
+  );
+  let translationSettingsDirty = $derived(
+    translationApiKeyDraft.trim().length > 0 ||
+    translationProviderConfig.enabled !== translationProviderOriginal.enabled ||
+    translationProviderConfig.provider !== translationProviderOriginal.provider ||
+    translationProviderConfig.baseUrl !== translationProviderOriginal.baseUrl ||
+    translationProviderConfig.model !== translationProviderOriginal.model
+  );
+  let translationConfigMessageText = $derived(translationConfigMsg ? $t(translationConfigMsg.key, translationConfigMsg.vars ?? {}) : "");
 
   onMount(() => {
     void loadSettingsData({ reason: "entry" });
@@ -202,6 +228,31 @@
       canCheckForUpdates: true,
       usesSandboxTools: false,
       usesRealTools: true,
+    };
+  }
+
+  function defaultTranslationProviderConfig() {
+    return {
+      enabled: false,
+      provider: "openai-compatible",
+      baseUrl: "https://api.openai.com/v1",
+      model: "",
+      apiKeyConfigured: false,
+    };
+  }
+
+  /** @param {any} config */
+  function normalizeTranslationProviderConfig(config) {
+    const provider = String(config?.provider || "openai-compatible").trim().toLowerCase();
+    return {
+      ...defaultTranslationProviderConfig(),
+      ...(config || {}),
+      provider: provider === "cc-router" || provider === "anthropic" || provider === "anthropic-compatible"
+        ? "anthropic-messages"
+        : provider || "openai-compatible",
+      baseUrl: String(config?.baseUrl || config?.base_url || "https://api.openai.com/v1"),
+      model: String(config?.model || ""),
+      apiKeyConfigured: Boolean(config?.apiKeyConfigured || config?.api_key_configured),
     };
   }
 
@@ -385,6 +436,7 @@
         nextCustomTools,
         nextModulePerformanceDiagnosticsEnabled,
         nextRuntimeInfo,
+        nextTranslationProviderConfig,
       ] = await Promise.all([
         trackModulePerformanceRequest(run, "tool-paths", () => getToolPaths()),
         trackModulePerformanceRequest(run, "injection-targets", () => getInjectionTargets()),
@@ -392,6 +444,7 @@
         trackModulePerformanceRequest(run, "custom-tools", () => getCustomTools()),
         trackModulePerformanceRequest(run, "diagnostics-preference", () => getModulePerformanceDiagnosticsEnabled().catch(() => false)),
         trackModulePerformanceRequest(run, "runtime-info", () => loadRuntimeInfo()),
+        trackModulePerformanceRequest(run, "translation-provider", () => getTranslationProviderConfig().catch(() => defaultTranslationProviderConfig())),
         trackModulePerformanceRequest(run, "tool-list", () => loadTools().catch(() => [])),
       ]);
       settingsToolPaths = paths;
@@ -402,6 +455,10 @@
       customToolsBaseline = JSON.parse(JSON.stringify(customTools));
       runtimeInfo = normalizeRuntimeInfo(nextRuntimeInfo?.info);
       runtimeInfoLoadFailed = nextRuntimeInfo?.failed === true;
+      translationProviderConfig = normalizeTranslationProviderConfig(nextTranslationProviderConfig);
+      translationProviderOriginal = translationProviderConfig;
+      setTranslationProviderState(translationProviderConfig);
+      translationApiKeyDraft = "";
       if (preferenceVersion === modulePerformancePreferenceVersion) {
         modulePerformanceDiagnosticsEnabled = nextModulePerformanceDiagnosticsEnabled === true;
         setModulePerformanceDiagnosticsEnabledState(modulePerformanceDiagnosticsEnabled);
@@ -1520,6 +1577,111 @@
     }
   }
 
+  /** @param {keyof ReturnType<typeof defaultTranslationProviderConfig>} field @param {any} value */
+  function setTranslationProviderField(field, value) {
+    clearTranslationConfigMsg();
+    translationProviderConfig = {
+      ...translationProviderConfig,
+      [field]: value,
+    };
+  }
+
+  function clearTranslationConfigMsg() {
+    translationConfigMsg = null;
+  }
+
+  /** @param {string} key @param {Record<string, any>} [vars] */
+  function setTranslationConfigMsg(key, vars = {}) {
+    translationConfigMsg = { key, vars };
+  }
+
+  function cancelTranslationSettingsEdit() {
+    if (translationConfigSaving || translationConfigTesting) return;
+    translationProviderConfig = translationProviderOriginal;
+    translationApiKeyDraft = "";
+    translationApiKeyFocused = false;
+    clearTranslationConfigMsg();
+    translationSettingsExpanded = false;
+  }
+
+  /** @param {ReturnType<typeof defaultTranslationProviderConfig>} config */
+  function translationProviderSavePayload(config) {
+    return {
+      enabled: config.enabled,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      model: config.model,
+    };
+  }
+
+  /** @param {boolean} enabled */
+  async function setTranslationProviderEnabled(enabled) {
+    if (translationConfigSaving || translationConfigTesting) return;
+    const previousConfig = translationProviderConfig;
+    translationProviderConfig = {
+      ...translationProviderConfig,
+      enabled,
+    };
+    translationConfigSaving = true;
+    clearTranslationConfigMsg();
+    try {
+      const nextConfig = await setTranslationProviderConfig(translationProviderSavePayload(translationProviderConfig));
+      translationProviderConfig = normalizeTranslationProviderConfig(nextConfig);
+      translationProviderOriginal = translationProviderConfig;
+      setTranslationProviderState(translationProviderConfig);
+    } catch (/** @type {any} */ e) {
+      translationProviderConfig = previousConfig;
+      setTranslationConfigMsg("settings.translation.save_failed", { err: e });
+    } finally {
+      translationConfigSaving = false;
+    }
+  }
+
+  async function saveTranslationProviderSettings() {
+    if (translationConfigSaving) return false;
+    if (!translationSettingsDirty) return true;
+    translationConfigSaving = true;
+    clearTranslationConfigMsg();
+    try {
+      let nextConfig = await setTranslationProviderConfig(translationProviderSavePayload(translationProviderConfig));
+      if (translationApiKeyDraft.trim()) {
+        nextConfig = await setTranslationApiKey(translationApiKeyDraft);
+      }
+      translationProviderConfig = normalizeTranslationProviderConfig(nextConfig);
+      translationProviderOriginal = translationProviderConfig;
+      setTranslationProviderState(translationProviderConfig);
+      translationApiKeyDraft = "";
+      translationApiKeyFocused = false;
+      setTranslationConfigMsg("settings.translation.saved");
+      const savedMessage = translationConfigMsg;
+      setTimeout(() => {
+        if (translationConfigMsg === savedMessage) clearTranslationConfigMsg();
+      }, 2000);
+      return true;
+    } catch (/** @type {any} */ e) {
+      setTranslationConfigMsg("settings.translation.save_failed", { err: e });
+      return false;
+    } finally {
+      translationConfigSaving = false;
+    }
+  }
+
+  async function testTranslationProviderSettings() {
+    if (translationConfigSaving || translationConfigTesting) return;
+    translationConfigTesting = true;
+    clearTranslationConfigMsg();
+    try {
+      const saved = await saveTranslationProviderSettings();
+      if (!saved) return;
+      await testTranslationProvider();
+      setTranslationConfigMsg("settings.translation.test_ok");
+    } catch (/** @type {any} */ e) {
+      setTranslationConfigMsg("settings.translation.test_failed", { err: e });
+    } finally {
+      translationConfigTesting = false;
+    }
+  }
+
   /** @param {any} tool */
   function toolCustomResetItems(tool) {
     const items = [];
@@ -1896,6 +2058,142 @@
                 <button class="segmented-btn" class:active={$languagePreference === "en"} onclick={() => switchLanguage("en")}>English</button>
               </div>
             </div>
+          </div>
+          <div class="settings-divider"></div>
+
+          <div class="settings-list-row settings-list-row--translation">
+            <div class="settings-translation-header">
+              <div class="settings-row-left">
+                <div class="settings-icon">
+                  <Languages size={18} />
+                </div>
+                <div class="settings-info">
+                  <div class="settings-title">{$t("settings.translation.title")}</div>
+                  <div class="settings-desc">{$t("settings.translation.desc")}</div>
+                  {#if translationConfigTesting}
+                    <div class="settings-translation-message">{$t("settings.translation.testing")}</div>
+                  {:else if translationConfigMessageText}
+                    <div class="settings-translation-message">{translationConfigMessageText}</div>
+                  {/if}
+                </div>
+              </div>
+              <div class="settings-row-right">
+                {#if translationSettingsExpanded}
+                  <button
+                    type="button"
+                    class="icon-btn st-row-action-btn"
+                    aria-label={$t("settings.translation.collapse")}
+                    disabled={translationConfigSaving || translationConfigTesting}
+                    onclick={cancelTranslationSettingsEdit}
+                  >
+                    <X size={13} />
+                  </button>
+                  {#if translationSettingsDirty}
+                    <button
+                      type="button"
+                      class="icon-btn st-row-action-btn"
+                      aria-label={$t("settings.tools.confirm")}
+                      disabled={translationConfigSaving || translationConfigTesting}
+                      onclick={saveTranslationProviderSettings}
+                    >
+                      <Check size={13} />
+                    </button>
+                  {/if}
+                  <Tooltip label={translationConfigTesting ? $t("settings.translation.testing") : $t("settings.translation.test")} placement="bottom">
+                    <button
+                      type="button"
+                      class="icon-btn st-row-action-btn"
+                      aria-label={translationConfigTesting ? $t("settings.translation.testing") : $t("settings.translation.test")}
+                      disabled={translationConfigSaving || translationConfigTesting}
+                      onclick={testTranslationProviderSettings}
+                    >
+                      <Beaker size={13} />
+                    </button>
+                  </Tooltip>
+                {:else}
+                  <button
+                    type="button"
+                    class="icon-btn st-row-action-btn"
+                    aria-label={$t("settings.translation.edit")}
+                    disabled={translationConfigSaving || translationConfigTesting}
+                    onclick={() => (translationSettingsExpanded = true)}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                {/if}
+                <label class="settings-translation-header-toggle">
+                  <span class="st-toggle">
+                    <input
+                      type="checkbox"
+                      checked={translationProviderConfig.enabled}
+                      aria-label={$t("settings.translation.enabled")}
+                      disabled={translationConfigSaving || translationConfigTesting}
+                      onchange={(event) => setTranslationProviderEnabled(/** @type {HTMLInputElement} */ (event.currentTarget).checked)}
+                    />
+                    <span class="st-toggle-slider"></span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {#if translationSettingsExpanded}
+              <div class="settings-row-right settings-row-right--translation">
+                <div class="settings-translation-grid">
+                  <label class="settings-translation-field">
+                    <span>{$t("settings.translation.provider")}</span>
+                    <div class="segmented-control settings-translation-provider-control">
+                      <button
+                        type="button"
+                        class="segmented-btn"
+                        class:active={translationProviderConfig.provider === "openai-compatible"}
+                        onclick={() => setTranslationProviderField("provider", "openai-compatible")}
+                      >
+                        {$t("settings.translation.provider_openai")}
+                      </button>
+                      <button
+                        type="button"
+                        class="segmented-btn"
+                        class:active={translationProviderConfig.provider === "anthropic-messages"}
+                        onclick={() => setTranslationProviderField("provider", "anthropic-messages")}
+                      >
+                        {$t("settings.translation.provider_anthropic")}
+                      </button>
+                    </div>
+                  </label>
+                  <label class="settings-translation-field">
+                    <span>{$t("settings.translation.base_url")}</span>
+                    <input
+                      class="settings-input"
+                      value={translationProviderConfig.baseUrl}
+                      placeholder="https://api.openai.com/v1"
+                      oninput={(event) => setTranslationProviderField("baseUrl", /** @type {HTMLInputElement} */ (event.currentTarget).value)}
+                    />
+                  </label>
+                  <label class="settings-translation-field">
+                    <span>{$t("settings.translation.model")}</span>
+                    <input
+                      class="settings-input"
+                      value={translationProviderConfig.model}
+                      placeholder={$t("settings.translation.model_placeholder")}
+                      oninput={(event) => setTranslationProviderField("model", /** @type {HTMLInputElement} */ (event.currentTarget).value)}
+                    />
+                  </label>
+                  <label class="settings-translation-field">
+                    <span>{translationProviderConfig.apiKeyConfigured ? $t("settings.translation.api_key_configured") : $t("settings.translation.api_key_missing")}</span>
+                    <input
+                      class="settings-input"
+                      type="password"
+                      value={translationApiKeyDisplayValue}
+                      placeholder={$t("settings.translation.api_key_placeholder")}
+                      autocomplete="off"
+                      onfocus={() => (translationApiKeyFocused = true)}
+                      onblur={() => (translationApiKeyFocused = false)}
+                      oninput={(event) => (translationApiKeyDraft = /** @type {HTMLInputElement} */ (event.currentTarget).value)}
+                    />
+                  </label>
+                </div>
+              </div>
+            {/if}
           </div>
           <div class="settings-divider"></div>
 
@@ -2463,6 +2761,8 @@
   .settings-group-card { background: var(--bg-card); border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden; display: flex; flex-direction: column; }
   .settings-list-row { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; transition: background 0.2s; }
   .settings-list-row:hover { background: var(--bg-hover); }
+  .settings-list-row--translation { flex-direction: column; align-items: stretch; gap: 12px; }
+  .settings-translation-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
   .settings-row-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
   .settings-icon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; font-size: 18px; background: rgba(150, 150, 150, 0.08); border-radius: 8px; }
   .settings-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -2476,6 +2776,14 @@
   .settings-update-status--failed { color: #dc2626; }
   .settings-update-status--restart { color: #059669; }
   .settings-row-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .settings-row-right--translation { width: 100%; justify-content: flex-start; padding-left: 52px; box-sizing: border-box; }
+  .settings-translation-grid { display: flex; flex-direction: column; gap: 10px; width: min(100%, 640px); }
+  .settings-translation-field { min-width: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; }
+  .settings-translation-header-toggle { display: inline-flex; align-items: center; gap: 10px; min-height: 28px; cursor: pointer; }
+  .settings-translation-field span { font-size: 10px; color: var(--color-text-muted); line-height: 1.4; }
+  .settings-translation-provider-control { height: var(--control-height); min-height: var(--control-height); justify-content: stretch; }
+  .settings-translation-provider-control .segmented-btn { flex: 1 1 0; min-width: 0; min-height: 0; height: 100%; padding: 0 8px; }
+  .settings-translation-message { margin-top: 2px; color: #3b82f6; font-size: 11px; line-height: 1.45; }
   .settings-switch { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: 11px; white-space: nowrap; cursor: pointer; }
   .settings-divider { height: 1px; background: var(--border-color); margin: 0 20px; }
   .inject-msg { font-size: 11px; color: #60a5fa; padding: 6px 10px; background: rgba(96,165,250,0.08); border-radius: 8px; margin-bottom: 10px; }

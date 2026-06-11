@@ -1,7 +1,7 @@
 <script>
   // Purpose: Skill detail view for shared-directory and tool-directory operations.
-  import { tick, untrack } from "svelte";
-  import { AlertCircle, Blocks, X, Pencil, Trash2, Search } from "lucide-svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { AlertCircle, ArrowLeft, Blocks, Languages, X, Pencil, Trash2, Search } from "lucide-svelte";
   import ConfirmDialog from "$lib/shared/components/ConfirmDialog.svelte";
   import ContentEditor from "$lib/shared/components/ContentEditor.svelte";
   import FileWorkspaceSearchResults from "$lib/shared/components/FileWorkspaceSearchResults.svelte";
@@ -12,6 +12,7 @@
   import SourceReadModeToggle from "$lib/shared/components/SourceReadModeToggle.svelte";
   import ToolIcon from "$lib/shared/components/ToolIcon.svelte";
   import Tooltip from "$lib/shared/components/Tooltip.svelte";
+  import { refreshTranslationProviderState, translationProviderState } from "$lib/features/settings/index.js";
   import {
     MODULE_PERFORMANCE_ROLE_BACKGROUND_COMPLETE,
     MODULE_PERFORMANCE_ROLE_INTERACTIVE,
@@ -21,7 +22,7 @@
     markModulePerformance,
     trackModulePerformanceRequest,
   } from "$lib/shared/diagnostics/modulePerformance.js";
-  import { readSkillContent, listSkillFiles, readSkillFile, writeSkillFile, scanSkillInventoryEntry, previewInstall, executeInstall, previewCopySkillToTool, executeCopySkillToTool, previewRenameSkillSource, executeRenameSkillSource, previewUninstall, executeUninstall, previewDeleteFromTool, executeDeleteFromTool, previewCleanupDuplicateSkillSources, executeCleanupDuplicateSkillSources, previewDelete, executeDelete } from "$lib/features/skills/api/skills.js";
+  import { readSkillContent, listSkillFiles, readSkillFile, writeSkillFile, translateMarkdown, scanSkillInventoryEntry, previewInstall, executeInstall, previewCopySkillToTool, executeCopySkillToTool, previewRenameSkillSource, executeRenameSkillSource, previewUninstall, executeUninstall, previewDeleteFromTool, executeDeleteFromTool, previewCleanupDuplicateSkillSources, executeCleanupDuplicateSkillSources, previewDelete, executeDelete } from "$lib/features/skills/api/skills.js";
   import { getSkillInventory, invalidateSkillInventory } from "$lib/features/skills/queries/skillInventoryQuery.js";
   import { normalizeSkillStatus, parseOperationPreview, statusToInstallMode } from "$lib/features/skills/domain/skillDomain.js";
   import { detectedTools, managedTools, tools, getToolName, hasProjectionAction } from "$lib/features/tools/index.js";
@@ -65,6 +66,10 @@
   let skillSearchAnchor = $state(/** @type {HTMLDivElement | undefined} */ (undefined));
   let skillSearchLoadKey = "";
   let skillSearchLoadId = 0;
+  let translationMenuOpen = $state(false);
+  let translatingFile = $state(false);
+  let translationResult = $state(/** @type {{ content: string, targetLanguage: string } | null} */ (null));
+  let translationMsg = $state("");
 
   let activeTab = $state("content");
   let loadingInstall = $state(false);
@@ -96,11 +101,18 @@
   let requireInventoryBackedContentSources = $state(false);
   let suppressVariantEffect = false;
 
+  onMount(() => {
+    void refreshTranslationProviderState().catch(() => {});
+  });
+
   let isMarkdown = $derived(selectedFile.toLowerCase().endsWith(".md"));
   let showFileModeToggle = $derived(isMarkdown && hasLoadedFileContent);
   let isFileDirty = $derived(String(editContent ?? "") !== String(fileContent ?? ""));
-  let selectedFileLineCount = $derived(String(editContent ?? "").split("\n").length);
+  let selectedFileLineCount = $derived(String((translationResult ? translationResult.content : editContent) ?? "").split("\n").length);
   let selectedFilePath = $derived(activeSkillPath && selectedFile ? joinSkillFilePath(activeSkillPath, selectedFile) : "");
+  let isTranslationView = $derived(Boolean(translationResult));
+  let translationProviderEnabled = $derived($translationProviderState.enabled === true);
+  let canTranslateCurrentSkillFile = $derived(translationProviderEnabled && isMarkdown && hasLoadedFileContent && !editingFile && !loadingContent && !isTranslationView);
   let skillSearchFiles = $derived(displayableSkillFiles(fileTree).map((/** @type {any} */ file) => ({
     id: file.relative_path,
     label: fileTreeLabel(file.relative_path),
@@ -120,7 +132,7 @@
     skillSearchOpen && activeTab === "content" && skillSearchResultsOpen && Boolean(skillSearchQuery.trim()) && skillSearchFiles.length > 0
   );
   let activeSkillExternalSearchQuery = $derived(
-    skillSearchOpen && activeTab === "content" && Boolean(skillSearchQuery.trim()) ? skillSearchQuery.trim() : ""
+    skillSearchOpen && activeTab === "content" && !isTranslationView && Boolean(skillSearchQuery.trim()) ? skillSearchQuery.trim() : ""
   );
   let activeSkillExternalSearchMatchIndex = $derived(
     skillSearchTarget.query === activeSkillExternalSearchQuery && skillSearchTarget.fileId === selectedFile
@@ -756,6 +768,12 @@
     return untrack(() => skillSearchTarget.version + 1);
   }
 
+  function clearTranslationResult() {
+    translationMenuOpen = false;
+    translationResult = null;
+    translationMsg = "";
+  }
+
   function bumpSkillSearchLoadId() {
     skillSearchLoadId = untrack(() => skillSearchLoadId + 1);
   }
@@ -797,6 +815,7 @@
   /** @param {string} skillPath */
   async function loadVariantContent(skillPath) {
     const loadId = ++contentLoadId;
+    clearTranslationResult();
     if (!skillPath) {
       fileTree = [];
       fileContent = "";
@@ -861,6 +880,7 @@
       skillFileNavigationCollapsed = false;
       editingFile = false;
       mdPreview = true;
+      clearTranslationResult();
       await loadVariantContent(nextPath);
     } finally {
       suppressVariantEffect = false;
@@ -879,6 +899,7 @@
       fileContent = "";
       editContent = "";
       activeSkillPath = "";
+      clearTranslationResult();
       requireInventoryBackedContentSources = false;
       skillFileNavigationCollapsed = false;
       hasLoadedFileContent = false;
@@ -928,6 +949,7 @@
       skillFileNavigationCollapsed = false;
       editingFile = false;
       mdPreview = true;
+      clearTranslationResult();
       sourcePickerOpen = false;
       sourcePickerCandidates = [];
       selectedSourceKey = "";
@@ -974,6 +996,7 @@
     expandedDirs = new Set();
     editingFile = false;
     mdPreview = true;
+    clearTranslationResult();
     skillSearchOpen = false;
     skillSearchResultsOpen = false;
     skillSearchQuery = "";
@@ -992,11 +1015,17 @@
 
   $effect(() => {
     if (activeTab === "content") return;
+    if (translationResult || translationMenuOpen || translationMsg) clearTranslationResult();
     if (!skillSearchOpen && !skillSearchQuery) return;
     skillSearchOpen = false;
     skillSearchResultsOpen = false;
     skillSearchQuery = "";
     skillSearchTarget = { fileId: "", query: "", matchIndex: 0, version: nextSkillSearchVersion() };
+  });
+
+  $effect(() => {
+    if (translationProviderEnabled) return;
+    if (translationResult || translationMenuOpen || translationMsg) clearTranslationResult();
   });
 
   $effect(() => {
@@ -1029,6 +1058,7 @@
   /** @param {string} relativePath */
   async function selectFile(relativePath) {
     if (!activeSkillPath) return;
+    clearTranslationResult();
     editingFile = false;
     selectedFile = relativePath;
     rememberSelectedSkillFile(activeSkillPath, relativePath);
@@ -1050,6 +1080,7 @@
 
   function startEditFile() {
     if (!canEditCurrentSkillFile) return;
+    clearTranslationResult();
     editContent = fileContent;
     editingFile = true;
   }
@@ -1057,6 +1088,26 @@
   function cancelEditFile() {
     editingFile = false;
     editContent = fileContent;
+  }
+
+  /** @param {string} targetLanguage */
+  async function translateCurrentFile(targetLanguage) {
+    if (!canTranslateCurrentSkillFile || translatingFile) return;
+    translationMenuOpen = false;
+    translationMsg = "";
+    translatingFile = true;
+    try {
+      const result = await translateMarkdown(fileContent, targetLanguage);
+      translationResult = {
+        content: String(result?.content || ""),
+        targetLanguage: String(result?.targetLanguage || targetLanguage),
+      };
+      mdPreview = true;
+    } catch (/** @type {any} */ e) {
+      translationMsg = $t("skills.viewer.translation_failed", { err: e });
+    } finally {
+      translatingFile = false;
+    }
   }
 
   /** @param {string} [nextContent] */
@@ -2078,6 +2129,7 @@
             variant={hasFileTreeNavigation ? "navigation-backed" : "single-file"}
             title={selectedFile || $t("skills.viewer.no_files_title")}
             subtitle={selectedFilePath || activeSkillPath || skill.path || ""}
+            badge=""
             modeLabel={editingFile ? $t("skills.viewer.editing") : ""}
             navigationVisible={Boolean(activeSkillPath && hasFileTreeNavigation)}
             navigationCollapsible={Boolean(hasFileTreeNavigation)}
@@ -2107,6 +2159,20 @@
                 <button type="button" class="file-viewer-primary-btn" onclick={() => saveEditFile(editContent)} disabled={savingFile || !isFileDirty}>
                   {savingFile ? $t("skills.viewer.saving") : $t("skills.viewer.save")}
                 </button>
+              {:else if translationResult}
+                <span class="file-viewer-inline-status">{$t("skills.viewer.lines", { count: selectedFileLineCount })}</span>
+                <button
+                  type="button"
+                  class="file-viewer-btn translation-toolbar-btn translation-toolbar-btn--active"
+                  aria-label={$t("skills.viewer.translation_action")}
+                  aria-pressed="true"
+                  onclick={clearTranslationResult}
+                >
+                  <Languages size={14} />
+                </button>
+                <button type="button" class="file-viewer-btn" onclick={clearTranslationResult}>
+                  <ArrowLeft size={14} /> {$t("skills.viewer.translation_back")}
+                </button>
               {:else}
                 {#if showFileModeToggle}
                   <SourceReadModeToggle
@@ -2115,6 +2181,36 @@
                     sourceLabel={$t("skills.viewer.mode_src")}
                     readLabel={$t("skills.viewer.mode_read")}
                   />
+                {/if}
+                {#if canTranslateCurrentSkillFile}
+                  <div class="translation-action-wrap">
+                    <button
+                      type="button"
+                      class="file-viewer-btn translation-toolbar-btn"
+                      class:translation-toolbar-btn--active={translationMenuOpen}
+                      aria-label={$t("skills.viewer.translation_action")}
+                      aria-pressed={translationMenuOpen}
+                      onclick={() => (translationMenuOpen = !translationMenuOpen)}
+                      disabled={translatingFile}
+                    >
+                      <Languages size={14} />
+                    </button>
+                    {#if translationMenuOpen}
+                      <div class="translation-menu" role="menu" aria-label={$t("skills.viewer.translation_target")}>
+                        <button type="button" role="menuitem" onclick={() => translateCurrentFile("zh-CN")}>
+                          {$t("skills.viewer.translation_target_zh")}
+                        </button>
+                        <button type="button" role="menuitem" onclick={() => translateCurrentFile("en")}>
+                          {$t("skills.viewer.translation_target_en")}
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+                {#if translatingFile}
+                  <span class="file-viewer-inline-status">{$t("skills.viewer.translating")}</span>
+                {:else if translationMsg}
+                  <span class="file-viewer-inline-status translation-error">{translationMsg}</span>
                 {/if}
                 {#if canEditCurrentSkillFile && hasFileTreeNavigation}
                   <button type="button" class="file-viewer-btn" onclick={startEditFile}>
@@ -2148,6 +2244,34 @@
                 <PrimaryState
                   message={$t("skills.viewer.no_files_title")}
                   detail={$t("skills.viewer.no_files_detail")}
+                />
+              {:else if translationResult}
+                <ContentEditor
+                  value={translationResult.content}
+                  bind:preview={mdPreview}
+                  originalValue={translationResult.content}
+                  editing={false}
+                  markdown={isMarkdown}
+                  filename={selectedFile}
+                  fill={true}
+                  minHeight="0"
+                  showModeToggle={false}
+                  framed={false}
+                  sourceLabel={$t("skills.viewer.mode_src")}
+                  readLabel={$t("skills.viewer.mode_read")}
+                  editLabel={$t("skills.viewer.edit")}
+                  cancelLabel={$t("skills.viewer.cancel")}
+                  saveLabel={$t("skills.viewer.save")}
+                  savingLabel={$t("skills.viewer.saving")}
+                  unsavedLabel={$t("skills.viewer.unsaved")}
+                  saving={false}
+                  showActions={false}
+                  showFooter={false}
+                  formatPreviewContent={formatFrontmatterForMarkdown}
+                  formatLineLabel={formatLineLabel}
+                  externalSearchQuery=""
+                  externalSearchMatchIndex={0}
+                  externalSearchVersion={0}
                 />
               {:else}
                 <ContentEditor
@@ -2668,6 +2792,57 @@
   .file-viewer-inline-status {
     color: var(--color-text-muted);
     font-size: 12px;
+  }
+  .translation-error {
+    max-width: 260px;
+    color: #dc2626;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .translation-action-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  :global(.file-viewer-actions .translation-toolbar-btn) {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+  }
+  :global(.file-viewer-actions .translation-toolbar-btn--active) {
+    background: var(--toolbar-control-active);
+    color: var(--color-text-main);
+    box-shadow: inset 0 0 0 1px var(--toolbar-control-border-active);
+  }
+  .translation-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 118px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    box-shadow: var(--shadow-popover, var(--shadow-soft));
+  }
+  .translation-menu button {
+    width: 100%;
+    min-height: 28px;
+    padding: 0 9px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-main);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .translation-menu button:hover,
+  .translation-menu button:focus-visible {
+    background: var(--bg-hover);
+    outline: none;
   }
   .skill-viewer-search-anchor {
     flex: 0 1 260px;

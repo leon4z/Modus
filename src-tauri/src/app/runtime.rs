@@ -120,6 +120,12 @@ pub fn run() {
             commands::mcp::list_mcp_config_sources,
             commands::mcp::read_mcp_server_config_fragment,
             commands::mcp::save_mcp_server_config_fragment,
+            commands::translation::get_translation_provider_config,
+            commands::translation::set_translation_provider_config,
+            commands::translation::set_translation_api_key,
+            commands::translation::clear_translation_api_key,
+            commands::translation::test_translation_provider,
+            commands::translation::translate_markdown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
