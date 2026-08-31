@@ -30,6 +30,8 @@ pub struct SkillInfo {
     pub path: String,
     pub tool_id: String,
     pub has_scripts: bool,
+    #[serde(default)]
+    pub broken_symlink: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<SkillPackageInfo>,
     pub files: Vec<String>,
@@ -261,10 +263,6 @@ fn collect_skill_infos(dir: &Path, tool_id: &str, skills: &mut Vec<SkillInfo>) {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-
         let skill_name = path
             .file_name()
             .unwrap_or_default()
@@ -280,6 +278,25 @@ fn collect_skill_infos(dir: &Path, tool_id: &str, skills: &mut Vec<SkillInfo>) {
             .file_type()
             .map(|file_type| file_type.is_symlink())
             .unwrap_or(false);
+        if is_symlink && !path.exists() {
+            skills.push(SkillInfo {
+                name: skill_name.clone(),
+                display_name: skill_name,
+                description: String::new(),
+                path: path.to_string_lossy().to_string(),
+                tool_id: tool_id.to_string(),
+                has_scripts: false,
+                broken_symlink: true,
+                package: None,
+                files: vec![],
+                skill_md_content: String::new(),
+            });
+            continue;
+        }
+        if !path.is_dir() {
+            continue;
+        }
+
         let skill_md = path.join("SKILL.md");
         if skill_md.exists() {
             // Only directories with their own SKILL.md are skills. Once a skill
@@ -300,6 +317,7 @@ fn collect_skill_infos(dir: &Path, tool_id: &str, skills: &mut Vec<SkillInfo>) {
                 path: path.to_string_lossy().to_string(),
                 tool_id: tool_id.to_string(),
                 has_scripts,
+                broken_symlink: false,
                 package,
                 files: vec![],                   // loaded on demand
                 skill_md_content: String::new(), // loaded on demand
@@ -650,6 +668,23 @@ mod tests {
 
         let result = scan_skills_dir(dir.path(), "t");
         assert!(result.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_keeps_broken_symlink_as_abnormal_skill_info() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("broken-skill");
+        std::os::unix::fs::symlink(dir.path().join("missing-target"), &link).unwrap();
+
+        let result = scan_skills_dir(dir.path(), "test-tool");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "broken-skill");
+        assert_eq!(result[0].path, link.to_string_lossy());
+        assert_eq!(result[0].tool_id, "test-tool");
+        assert!(result[0].broken_symlink);
+        assert!(result[0].skill_md_content.is_empty());
     }
 
     #[test]

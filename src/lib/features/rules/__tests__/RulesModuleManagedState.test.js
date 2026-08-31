@@ -477,6 +477,52 @@ describe("RulesModule managed state", () => {
     expect(screen.queryByRole("button", { name: "Inject" })).not.toBeInTheDocument();
   });
 
+  it("does not show pending updates for an absent historically managed tool", async () => {
+    toolStores.tools.set([
+      { id: "codex", name: "Codex", detected: true, rule_sources: [] },
+      { id: "hermes-agent", name: "Hermes Agent", detected: false, rule_sources: [] },
+    ]);
+    toolStores.managedToolIds.set(["hermes-agent"]);
+    defaultRulesState = [
+      {
+        ...defaultRulesState[0],
+        managed_targets: ["hermes-agent"],
+      },
+    ];
+    baselineState = {
+      common_rule: "outdated",
+      custom_rules: {},
+      custom_rule_pending_targets: {},
+    };
+    managedRulesStateResponse = {
+      ...cleanState,
+      rule_sets: [
+        {
+          ...cleanState.rule_sets[0],
+          managed_tool_ids: [],
+          source_pending: false,
+        },
+      ],
+      targets: [],
+      summary: {
+        ...cleanState.summary,
+        managed_targets: 0,
+        in_sync_targets: 0,
+        affected_tool_ids: [],
+      },
+    };
+
+    render(RulesModule);
+
+    expect(await screen.findByText("Global Rules")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(rulesApiMocks.getManagedRulesState).toHaveBeenCalled();
+    });
+    expect(screen.queryByText("Tool rules need update")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hermes Agent")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Inject" })).not.toBeInTheDocument();
+  });
+
   it("keeps fileless tools out of pending global rule updates", async () => {
     managedRulesStateResponse = {
       ...cleanState,

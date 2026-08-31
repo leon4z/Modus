@@ -133,7 +133,8 @@
     return Boolean(normalized)
       && normalized !== "notInstalled"
       && normalized !== "variantNotInstalled"
-      && normalized !== "noVariant";
+      && normalized !== "noVariant"
+      && normalized !== "brokenSymlink";
   }
 
   function currentManagedToolIdSet() {
@@ -157,14 +158,20 @@
     return status?.path || targetPath || "";
   }
 
+  /** @param {any} status */
+  function usableInventorySource(status) {
+    const candidates = [status, ...(Array.isArray(status?.sources) ? status.sources : [])];
+    return candidates.find((source) =>
+      isSkillStatusInstalledLike(source?.status)
+        && typeof contentPathForInventoryStatus(source) === "string"
+        && contentPathForInventoryStatus(source).length > 0
+    ) || null;
+  }
+
   /** @param {any[]} statuses */
   function primaryPathForToolStatuses(statuses) {
-    const status = statuses.find((/** @type {any} */ item) =>
-      isSkillStatusInstalledLike(item?.status)
-        && typeof contentPathForInventoryStatus(item) === "string"
-        && contentPathForInventoryStatus(item).length > 0
-    );
-    return contentPathForInventoryStatus(status) || "";
+    const source = statuses.map(usableInventorySource).find(Boolean);
+    return contentPathForInventoryStatus(source) || "";
   }
 
   /** @param {Array<any>} entries */
@@ -173,15 +180,13 @@
     return sourceSkills.map((/** @type {any} */ entry) => {
       const toolStatuses = filterStatusesForManagedTools(entry.tool_statuses || entry.toolStatuses || []);
       const installed_in = toolStatuses
-        .filter((/** @type {any} */ ts) => {
-          const hasPath = typeof ts?.path === "string" && ts.path.length > 0;
-          return isSkillStatusInstalledLike(ts?.status) && hasPath;
-        })
-        .map((/** @type {any} */ ts) => ({
+        .map((/** @type {any} */ ts) => ({ ts, source: usableInventorySource(ts) }))
+        .filter(({ source }) => Boolean(source))
+        .map(({ ts, source }) => ({
           tool_id: ts.tool_id || ts.toolId,
-          mode: mapInventoryStatusToMode(ts.status),
-          path: ts.path,
-          target_path: ts.symlink_target || ts.symlinkTarget || null,
+          mode: mapInventoryStatusToMode(source.status),
+          path: contentPathForInventoryStatus(source),
+          target_path: source.symlink_target || source.symlinkTarget || null,
         }));
 
       return {
@@ -206,10 +211,14 @@
 
   /** @param {any} status */
   function isSharedBackedStatus(status) {
-    const pathOrigin = status?.path_origin || status?.pathOrigin;
-    if (pathOrigin === "generic") return true;
-    const targetPath = status?.symlink_target || status?.symlinkTarget || status?.target_path || status?.targetPath;
-    return typeof targetPath === "string" && targetPath.length > 0 && targetPath !== status?.path;
+    const candidates = [status, ...(Array.isArray(status?.sources) ? status.sources : [])];
+    return candidates.some((source) => {
+      if (!isSkillStatusInstalledLike(source?.status)) return false;
+      const pathOrigin = source?.path_origin || source?.pathOrigin;
+      if (pathOrigin === "generic") return true;
+      const targetPath = source?.symlink_target || source?.symlinkTarget || source?.target_path || source?.targetPath;
+      return typeof targetPath === "string" && targetPath.length > 0 && targetPath !== source?.path;
+    });
   }
 
   /** @param {any[]} overview */
@@ -221,7 +230,8 @@
   function inventoryEntryHasSource(entry) {
     const statuses = entry?.tool_statuses || entry?.toolStatuses || [];
     return statuses.some((/** @type {any} */ status) =>
-      isSkillStatusInstalledLike(status?.status)
+      (isSkillStatusInstalledLike(status?.status)
+        || normalizeSkillStatus(status?.status) === "brokenSymlink")
         && typeof status?.path === "string"
         && status.path.length > 0
     );
@@ -625,6 +635,15 @@
     };
   }
 
+  /** @param {any} skill */
+  function buildOverviewSkillWarning(skill) {
+    const statuses = skill?.tool_statuses || skill?.toolStatuses || [];
+    if (statuses.some((/** @type {any} */ status) => normalizeSkillStatus(status?.status) === "brokenSymlink")) {
+      return buildToolSkillWarningPayload(skill, $t("skills.card.warning_broken"));
+    }
+    return null;
+  }
+
   /**
    * @param {any} skill
    * @param {string | null | undefined} toolId
@@ -660,7 +679,9 @@
       const overview = skillsOverview.find((item) => item.name === entry.name);
       grouped.set(entry.name, {
         ...entry,
-        display_name: entry.display_name || overview?.display_name || entry.name,
+        display_name: entry.broken_symlink
+          ? (overview?.display_name || entry.display_name || entry.name)
+          : (entry.display_name || overview?.display_name || entry.name),
         description: entry.description || overview?.description || "",
         path: entry.path || overview?.path || "",
         tool_statuses: overview?.tool_statuses || entry.tool_statuses || entry.toolStatuses || [],
@@ -880,6 +901,7 @@
               description={item.description || ""}
               note={packageNote(item)}
               badges={buildSkillBadges(item)}
+              warning={buildOverviewSkillWarning(item)}
               onclick={() => openSkillViewer(item)}
             />
           {/each}

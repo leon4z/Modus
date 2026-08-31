@@ -5,7 +5,8 @@ use crate::adapters::skills::scan_skills_dir;
 use crate::adapters::{RuleFormat, RuleSource, ToolRegistry};
 use crate::domains::mcp::get_mcp_diagnostics_for_config_domain;
 use crate::domains::skills::resolved_detected_tool_skills_dir;
-use crate::domains::tools::canonical_managed_tool_ids;
+use crate::domains::tools::active_managed_tool_ids;
+use std::collections::HashSet;
 
 pub(crate) fn get_dashboard_domain(registry: &ToolRegistry) -> DashboardData {
     let config = app_config::load_config();
@@ -17,7 +18,9 @@ pub(crate) fn get_dashboard_for_config(
     config: &app_config::AppConfig,
 ) -> DashboardData {
     let all_tools = registry.detect_all_for_config(config);
-    let managed_tools = canonical_managed_tool_ids(&config.managed_tools);
+    let active_tool_ids: HashSet<String> = active_managed_tool_ids(&all_tools, config)
+        .into_iter()
+        .collect();
 
     let mut stats = vec![];
     let mut total_rules = 0;
@@ -27,13 +30,18 @@ pub(crate) fn get_dashboard_for_config(
     let mut detected_count = 0;
 
     for tool in &all_tools {
-        if config.initialized && !managed_tools.contains(&tool.id) {
+        if !active_tool_ids.contains(&tool.id) {
             continue;
         }
 
         let skill_count = if tool.detected {
             resolved_detected_tool_skills_dir(tool)
-                .map(|dir| scan_skills_dir(&dir, &tool.id).len())
+                .map(|dir| {
+                    scan_skills_dir(&dir, &tool.id)
+                        .into_iter()
+                        .filter(|skill| !skill.broken_symlink)
+                        .count()
+                })
                 .unwrap_or(0)
         } else {
             0
@@ -245,6 +253,23 @@ mod tests {
     }
 
     #[test]
+    fn initialized_dashboard_canonicalizes_legacy_enabled_tool_id() {
+        let registry =
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(DashboardTestAdapter {
+                id: "claude-code",
+            })]);
+        let mut config = app_config::default_config();
+        config.initialized = true;
+        config.managed_tools = vec!["claude_code".to_string()];
+
+        let dashboard = get_dashboard_for_config(&registry, &config);
+
+        assert_eq!(dashboard.tools.len(), 1);
+        assert_eq!(dashboard.tools[0].tool_id, "claude-code");
+        assert_eq!(dashboard.detected_count, 1);
+    }
+
+    #[test]
     fn initialized_dashboard_includes_enabled_custom_tool_sources() {
         let tmp = tempfile::tempdir().unwrap();
         let rules_dir = tmp.path().join("rules");
@@ -402,12 +427,7 @@ mod tests {
 
         let dashboard = get_dashboard_for_config(&registry, &config);
 
-        assert_eq!(dashboard.tools.len(), 1);
-        assert!(!dashboard.tools[0].detected);
-        assert_eq!(
-            dashboard.tools[0].primary_config_health,
-            PrimaryConfigHealth::Unknown
-        );
+        assert!(dashboard.tools.is_empty());
         assert_eq!(dashboard.detected_count, 0);
     }
 }

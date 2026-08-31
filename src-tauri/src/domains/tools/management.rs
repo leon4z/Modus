@@ -1,6 +1,7 @@
 // Purpose: Own managed tools, custom tools, and tool path persistence.
 
 use super::*;
+use crate::adapters::{DetectedTool, ToolRegistry};
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
@@ -15,6 +16,35 @@ pub(crate) fn canonical_managed_tool_ids(tool_ids: &[String]) -> Vec<String> {
         }
     }
     ids.into_iter().collect()
+}
+
+pub(crate) fn active_managed_tool_ids(
+    detected_tools: &[DetectedTool],
+    config: &app_config::AppConfig,
+) -> Vec<String> {
+    let detected_ids: BTreeSet<String> = detected_tools
+        .iter()
+        .filter(|tool| tool.detected)
+        .map(|tool| crate::platform::tool_catalog::normalization::canonical_tool_id(&tool.id))
+        .filter(|tool_id| !tool_id.trim().is_empty())
+        .collect();
+
+    if !config.initialized {
+        return detected_ids.into_iter().collect();
+    }
+
+    canonical_managed_tool_ids(&config.managed_tools)
+        .into_iter()
+        .filter(|tool_id| detected_ids.contains(tool_id))
+        .collect()
+}
+
+pub(crate) fn active_managed_tool_ids_for_config(
+    registry: &ToolRegistry,
+    config: &app_config::AppConfig,
+) -> Vec<String> {
+    let detected_tools = registry.detect_all_for_config(config);
+    active_managed_tool_ids(&detected_tools, config)
 }
 
 pub(crate) fn get_tool_paths_domain() -> HashMap<String, app_config::ToolPaths> {
@@ -182,6 +212,43 @@ pub(crate) fn set_managed_tools_domain(tool_ids: Vec<String>) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::{RuleSource, ToolAdapter};
+    use std::path::PathBuf;
+
+    struct ManagedScopeTestAdapter {
+        id: &'static str,
+        detected: bool,
+    }
+
+    impl ToolAdapter for ManagedScopeTestAdapter {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn name(&self) -> &str {
+            self.id
+        }
+
+        fn icon(&self) -> &str {
+            "T"
+        }
+
+        fn config_dir(&self) -> PathBuf {
+            PathBuf::new()
+        }
+
+        fn detect(&self) -> bool {
+            self.detected
+        }
+
+        fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
+            Ok(vec![])
+        }
+
+        fn write_rule(&self, _path: &str, _content: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn canonicalizes_legacy_underscore_managed_tool_ids() {
@@ -194,6 +261,75 @@ mod tests {
         assert_eq!(
             canonical_managed_tool_ids(&managed),
             vec!["claude-code".to_string(), "codex".to_string()]
+        );
+    }
+
+    #[test]
+    fn active_scope_intersects_saved_selection_with_current_detection() {
+        let registry = ToolRegistry::from_adapters_for_tests(vec![
+            Box::new(ManagedScopeTestAdapter {
+                id: "tool-a",
+                detected: true,
+            }),
+            Box::new(ManagedScopeTestAdapter {
+                id: "tool-b",
+                detected: false,
+            }),
+            Box::new(ManagedScopeTestAdapter {
+                id: "tool-c",
+                detected: true,
+            }),
+        ]);
+        let mut config = app_config::default_config();
+        config.initialized = true;
+        config.managed_tools = vec!["tool-a".to_string(), "tool-b".to_string()];
+
+        assert_eq!(
+            active_managed_tool_ids_for_config(&registry, &config),
+            vec!["tool-a".to_string()]
+        );
+        assert_eq!(
+            config.managed_tools,
+            vec!["tool-a".to_string(), "tool-b".to_string()]
+        );
+    }
+
+    #[test]
+    fn active_scope_canonicalizes_legacy_saved_selection() {
+        let registry =
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(ManagedScopeTestAdapter {
+                id: "claude-code",
+                detected: true,
+            })]);
+        let mut config = app_config::default_config();
+        config.initialized = true;
+        config.managed_tools = vec!["claude_code".to_string()];
+
+        assert_eq!(
+            active_managed_tool_ids_for_config(&registry, &config),
+            vec!["claude-code".to_string()]
+        );
+    }
+
+    #[test]
+    fn active_scope_uses_only_detected_tools_before_onboarding() {
+        let registry = ToolRegistry::from_adapters_for_tests(vec![
+            Box::new(ManagedScopeTestAdapter {
+                id: "tool-a",
+                detected: true,
+            }),
+            Box::new(ManagedScopeTestAdapter {
+                id: "tool-b",
+                detected: false,
+            }),
+        ]);
+        let mut config = app_config::default_config();
+        config.initialized = false;
+        config.managed_tools = vec!["tool-b".to_string()];
+
+        assert_eq!(
+            active_managed_tool_ids_for_config(&registry, &config),
+            vec!["tool-a".to_string()]
         );
     }
 

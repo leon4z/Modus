@@ -696,27 +696,18 @@ fn inventory_detected_tools_for_config(
     registry: &ToolRegistry,
     config: &crate::platform::config::AppConfig,
 ) -> Vec<DetectedTool> {
-    let active_tool_ids: Option<HashSet<String>> = if config.initialized {
-        Some(
-            crate::domains::tools::canonical_managed_tool_ids(&config.managed_tools)
-                .into_iter()
-                .collect(),
-        )
-    } else {
-        None
-    };
-    registry
-        .detect_all_for_config(config)
+    let detected_tools = registry.detect_all_for_config(config);
+    let active_tool_ids: HashSet<String> =
+        crate::domains::tools::active_managed_tool_ids(&detected_tools, config)
+            .into_iter()
+            .collect();
+    detected_tools
         .into_iter()
         .filter(|tool| {
-            tool.detected
-                && active_tool_ids.as_ref().map_or(true, |ids| {
-                    ids.contains(
-                        &crate::platform::tool_catalog::normalization::canonical_tool_id(&tool.id),
-                    )
-                })
-                && (resolved_detected_tool_skills_dir(tool).is_some()
-                    || detected_tool_can_read_shared_skills(tool))
+            active_tool_ids.contains(
+                &crate::platform::tool_catalog::normalization::canonical_tool_id(&tool.id),
+            ) && (resolved_detected_tool_skills_dir(tool).is_some()
+                || detected_tool_can_read_shared_skills(tool))
         })
         .collect()
 }
@@ -929,51 +920,67 @@ fn build_skill_entry_from_sources(
     })
 }
 
-pub(crate) fn list_skills_overview_domain(
-    registry: &ToolRegistry,
-) -> Result<Vec<SkillOverviewItem>, String> {
-    let inventory = build_skill_inventory_for_current_config(registry)?;
+fn status_is_usable(status: &SkillStatus) -> bool {
+    !matches!(
+        status,
+        SkillStatus::VariantNotInstalled | SkillStatus::NoVariant | SkillStatus::BrokenSymlink
+    )
+}
 
+fn overview_presence_from_status(status: &ToolSkillStatus) -> Option<SkillPresence> {
+    if let Some(source) = status
+        .sources
+        .iter()
+        .find(|source| status_is_usable(&source.status))
+    {
+        let mode = if source.symlink_target.is_some()
+            || matches!(source.status, SkillStatus::VariantInstalledSymlink)
+        {
+            "symlink".to_string()
+        } else {
+            "copy".to_string()
+        };
+        return Some(SkillPresence {
+            tool_id: status.tool_id.clone(),
+            mode,
+            path: source.path.clone(),
+            target_path: source.symlink_target.clone(),
+        });
+    }
+
+    if !status_is_usable(&status.status) {
+        return None;
+    }
+    let path = status.path.clone()?;
+    let mode = if status.symlink_target.is_some()
+        || matches!(status.status, SkillStatus::VariantInstalledSymlink)
+    {
+        "symlink".to_string()
+    } else {
+        "copy".to_string()
+    };
+    Some(SkillPresence {
+        tool_id: status.tool_id.clone(),
+        mode,
+        path,
+        target_path: status.symlink_target.clone(),
+    })
+}
+
+fn skill_inventory_to_overview(inventory: SkillInventory) -> Vec<SkillOverviewItem> {
     let mut overview: Vec<SkillOverviewItem> = inventory
         .skills
         .into_iter()
         .map(|entry| {
-            let mut installed_in = Vec::new();
-            for ts in &entry.tool_statuses {
-                if matches!(
-                    ts.status,
-                    SkillStatus::VariantNotInstalled | SkillStatus::NoVariant
-                ) {
-                    continue;
-                }
-                let Some(path) = ts.path.clone() else {
-                    continue;
-                };
-
-                let mode = if ts.symlink_target.is_some()
-                    || matches!(
-                        ts.status,
-                        SkillStatus::VariantInstalledSymlink | SkillStatus::BrokenSymlink
-                    ) {
-                    "symlink".to_string()
-                } else {
-                    "copy".to_string()
-                };
-
-                installed_in.push(SkillPresence {
-                    tool_id: ts.tool_id.clone(),
-                    mode,
-                    path,
-                    target_path: ts.symlink_target.clone(),
-                });
-            }
-            let path = if let Some(path) = entry.path.clone() {
-                path
-            } else if let Some(first) = installed_in.first() {
-                first.path.clone()
-            } else {
-                String::new()
-            };
+            let installed_in = entry
+                .tool_statuses
+                .iter()
+                .filter_map(overview_presence_from_status)
+                .collect::<Vec<_>>();
+            let path = installed_in
+                .first()
+                .map(|presence| presence.path.clone())
+                .unwrap_or_default();
 
             SkillOverviewItem {
                 name: entry.name,
@@ -985,7 +992,14 @@ pub(crate) fn list_skills_overview_domain(
         })
         .collect();
     overview.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(overview)
+    overview
+}
+
+pub(crate) fn list_skills_overview_domain(
+    registry: &ToolRegistry,
+) -> Result<Vec<SkillOverviewItem>, String> {
+    let inventory = build_skill_inventory_for_current_config(registry)?;
+    Ok(skill_inventory_to_overview(inventory))
 }
 
 pub(crate) fn read_skill_content_domain(skill_path: String) -> Option<SkillInfo> {
@@ -1003,6 +1017,7 @@ pub(crate) fn read_skill_content_domain(skill_path: String) -> Option<SkillInfo>
         path: skill_path,
         tool_id: String::new(),
         has_scripts,
+        broken_symlink: false,
         package: crate::adapters::skills::detect_skill_package_info(&p),
         files,
         skill_md_content: content,
@@ -1202,6 +1217,7 @@ mod tests {
         id: String,
         name: String,
         dir: PathBuf,
+        detected: bool,
     }
 
     impl ToolAdapter for NamedSkillCapabilityTestAdapter {
@@ -1218,7 +1234,7 @@ mod tests {
             self.dir.clone()
         }
         fn detect(&self) -> bool {
-            true
+            self.detected
         }
         fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
             Ok(vec![])
@@ -1432,11 +1448,13 @@ mod tests {
                 id: "tool-a".to_string(),
                 name: "Tool A".to_string(),
                 dir: enabled_dir,
+                detected: true,
             }),
             Box::new(NamedSkillCapabilityTestAdapter {
                 id: "tool-b".to_string(),
                 name: "Tool B".to_string(),
                 dir: disabled_dir,
+                detected: true,
             }),
         ]);
         let mut config = crate::platform::config::default_config();
@@ -1454,6 +1472,36 @@ mod tests {
 
         assert!(names.contains("enabled-skill"));
         assert!(!names.contains("disabled-skill"));
+    }
+
+    #[test]
+    fn initialized_inventory_excludes_absent_managed_tool_with_leftover_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leftover_dir = tmp.path().join("leftover-skills");
+        std::fs::create_dir_all(leftover_dir.join("historical-skill")).unwrap();
+        std::fs::write(
+            leftover_dir.join("historical-skill").join("SKILL.md"),
+            "# historical",
+        )
+        .unwrap();
+        let registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(
+            NamedSkillCapabilityTestAdapter {
+                id: "tool-a".to_string(),
+                name: "Tool A".to_string(),
+                dir: leftover_dir,
+                detected: false,
+            },
+        )]);
+        let mut config = crate::platform::config::default_config();
+        config.initialized = true;
+        config.managed_tools = vec!["tool-a".to_string()];
+
+        let inventory =
+            build_skill_inventory_for_config_with_generic_dir(&registry, tmp.path(), &config)
+                .unwrap();
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(config.managed_tools, vec!["tool-a".to_string()]);
     }
 
     #[test]
@@ -1799,6 +1847,80 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .ends_with("skills/broken-link"));
+    }
+
+    #[test]
+    fn overview_excludes_pure_broken_links_but_keeps_a_valid_shared_source() {
+        let broken_source = SkillSourceEntry {
+            tool_id: "codebuddy".to_string(),
+            tool_name: "CodeBuddy".to_string(),
+            status: SkillStatus::BrokenSymlink,
+            path: "/tools/codebuddy/skills/demo".to_string(),
+            path_origin: "tool".to_string(),
+            updated_at: None,
+            content_hash: None,
+            symlink_target: Some("/shared/missing-demo".to_string()),
+        };
+        let valid_shared_source = SkillSourceEntry {
+            tool_id: "codebuddy".to_string(),
+            tool_name: "CodeBuddy".to_string(),
+            status: SkillStatus::VariantInstalledCopy,
+            path: "/shared/demo".to_string(),
+            path_origin: "generic".to_string(),
+            updated_at: None,
+            content_hash: None,
+            symlink_target: None,
+        };
+        let broken_status = |sources| ToolSkillStatus {
+            tool_id: "codebuddy".to_string(),
+            tool_name: "CodeBuddy".to_string(),
+            status: SkillStatus::BrokenSymlink,
+            path: Some("/tools/codebuddy/skills/demo".to_string()),
+            path_origin: "tool".to_string(),
+            updated_at: None,
+            content_hash: None,
+            symlink_target: Some("/shared/missing-demo".to_string()),
+            sources,
+            abnormal_state: None,
+        };
+        let inventory = SkillInventory {
+            skills: vec![
+                SkillEntry {
+                    name: "broken-only".to_string(),
+                    display_name: "Broken only".to_string(),
+                    description: String::new(),
+                    path: Some("/tools/codebuddy/skills/demo".to_string()),
+                    tool_statuses: vec![broken_status(vec![broken_source.clone()])],
+                    package: None,
+                },
+                SkillEntry {
+                    name: "broken-with-shared".to_string(),
+                    display_name: "Broken with shared".to_string(),
+                    description: String::new(),
+                    path: Some("/shared/demo".to_string()),
+                    tool_statuses: vec![broken_status(vec![broken_source, valid_shared_source])],
+                    package: None,
+                },
+            ],
+        };
+
+        let overview = skill_inventory_to_overview(inventory);
+        let broken_only = overview
+            .iter()
+            .find(|item| item.name == "broken-only")
+            .unwrap();
+        assert!(broken_only.installed_in.is_empty());
+        assert!(broken_only.path.is_empty());
+
+        let mixed = overview
+            .iter()
+            .find(|item| item.name == "broken-with-shared")
+            .unwrap();
+        assert_eq!(mixed.installed_in.len(), 1);
+        assert_eq!(mixed.installed_in[0].tool_id, "codebuddy");
+        assert_eq!(mixed.installed_in[0].mode, "copy");
+        assert_eq!(mixed.installed_in[0].path, "/shared/demo");
+        assert_eq!(mixed.path, "/shared/demo");
     }
 
     #[test]

@@ -439,12 +439,20 @@ mod file_write_tests {
         access: ToolCapabilityAccess,
         dir: PathBuf,
     ) -> ToolRegistry {
+        registry_for_direct_shared_reader_with_actions(access, dir, &[])
+    }
+
+    fn registry_for_direct_shared_reader_with_actions(
+        access: ToolCapabilityAccess,
+        dir: PathBuf,
+        actions: &[ToolCapabilityAction],
+    ) -> ToolRegistry {
         ToolRegistry::from_adapters_for_tests(vec![Box::new(SkillWriteTestAdapter {
             id: "skill-write-test".to_string(),
             access,
             dir,
             metadata_path: None,
-            action_evidence: vec![],
+            action_evidence: action_evidence_for(actions),
             shared_read: true,
         })])
     }
@@ -744,6 +752,192 @@ mod file_write_tests {
         assert!(!target.exists());
         assert!(!target.is_symlink());
         assert!(source.join("SKILL.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn direct_shared_reader_uninstalls_broken_tool_link_without_touching_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let missing_target = tmp.path().join("missing-source").join("demo");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        let target = skills_dir.join("demo");
+        std::os::unix::fs::symlink(&missing_target, &target).unwrap();
+        let registry = registry_for_direct_shared_reader_with_actions(
+            ToolCapabilityAccess::Writable,
+            skills_dir,
+            &[ToolCapabilityAction::View, ToolCapabilityAction::Uninstall],
+        );
+
+        let preview = uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(preview.deletes, vec![target.to_string_lossy().to_string()]);
+        assert_eq!(preview.changes[0].entry_kind.as_deref(), Some("symlink"));
+        assert!(target.is_symlink());
+        assert!(!missing_target.exists());
+
+        uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            false,
+        )
+        .unwrap();
+
+        assert!(!target.exists());
+        assert!(!target.is_symlink());
+        assert!(!missing_target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn uninstall_rejects_unsafe_skill_names_without_touching_external_link() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let external_link = tmp.path().join("external-link");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("missing-external-target"), &external_link)
+            .unwrap();
+        let registry = registry_for_direct_shared_reader_with_actions(
+            ToolCapabilityAccess::Writable,
+            skills_dir,
+            &[ToolCapabilityAction::View, ToolCapabilityAction::Uninstall],
+        );
+
+        let unsafe_names = vec![
+            "../external-link".to_string(),
+            external_link.to_string_lossy().to_string(),
+            "nested\\external-link".to_string(),
+        ];
+        for unsafe_name in unsafe_names {
+            let preview_err = uninstall_skill_v2_domain(
+                &registry,
+                unsafe_name.clone(),
+                "skill-write-test".to_string(),
+                true,
+            )
+            .unwrap_err();
+            assert!(preview_err.contains("single visible directory name"));
+
+            let execute_err = uninstall_skill_v2_domain(
+                &registry,
+                unsafe_name,
+                "skill-write-test".to_string(),
+                false,
+            )
+            .unwrap_err();
+            assert!(execute_err.contains("single visible directory name"));
+            assert!(external_link.is_symlink());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn uninstall_rechecks_link_state_and_preserves_recreated_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let target = skills_dir.join("demo");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("missing-source"), &target).unwrap();
+        let registry = registry_for_direct_shared_reader_with_actions(
+            ToolCapabilityAccess::Writable,
+            skills_dir,
+            &[ToolCapabilityAction::View, ToolCapabilityAction::Uninstall],
+        );
+
+        uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            true,
+        )
+        .unwrap();
+
+        std::fs::remove_file(&target).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("SKILL.md"), "# recreated").unwrap();
+
+        let err = uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            false,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("use delete"));
+        assert_eq!(
+            std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
+            "# recreated"
+        );
+    }
+
+    #[test]
+    fn direct_shared_reader_without_tool_link_returns_structured_uninstall_blocker() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        let registry = registry_for_direct_shared_reader_with_actions(
+            ToolCapabilityAccess::Writable,
+            skills_dir,
+            &[ToolCapabilityAction::View, ToolCapabilityAction::Uninstall],
+        );
+
+        let preview = uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            true,
+        )
+        .unwrap();
+
+        assert!(preview.deletes.is_empty());
+        assert_eq!(preview.blocked.len(), 1);
+        assert_eq!(preview.blocked[0].reason.code, REASON_POLICY_MISMATCH);
+        assert_eq!(
+            preview.blocked[0].reason.raw.as_deref(),
+            Some("direct_shared_reader_without_tool_link")
+        );
+
+        let err = uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            false,
+        )
+        .unwrap_err();
+        assert!(err.contains("没有可卸载的工具目录链接"));
+    }
+
+    #[test]
+    fn direct_shared_reader_real_tool_source_still_requires_delete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let target = skills_dir.join("demo");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("SKILL.md"), "# local").unwrap();
+        let registry = registry_for_direct_shared_reader_with_actions(
+            ToolCapabilityAccess::Writable,
+            skills_dir,
+            &[ToolCapabilityAction::View, ToolCapabilityAction::Uninstall],
+        );
+
+        let err = uninstall_skill_v2_domain(
+            &registry,
+            "demo".to_string(),
+            "skill-write-test".to_string(),
+            true,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("use delete"));
+        assert!(target.join("SKILL.md").exists());
     }
 
     #[cfg(unix)]
@@ -1862,25 +2056,17 @@ pub(crate) fn uninstall_skill_v2_domain(
     tool_id: String,
     dry_run: bool,
 ) -> Result<OperationPreview, String> {
+    let skill_name = sanitize_skill_dir_name(&skill_name)?;
     let tool_id = canonical_skill_tool_id(&tool_id);
     let subject = tool_id.clone();
     let tool = detected_tool_for_skill_action(registry, &tool_id)?;
-    if detected_tool_can_read_shared_skills(&tool) {
-        return preview_reject_or_error(
-            dry_run,
-            ACTION_UNINSTALL,
-            &skill_name,
-            &subject,
-            format!(
-                "Tool directly reads shared Skills; shared Skill uninstall is unavailable: {}",
-                tool_id
-            ),
-        );
-    }
     let tool_skills_dir =
         resolved_detected_tool_skills_dir_for_action(&tool, &ToolCapabilityAction::Uninstall)
             .ok_or_else(|| format!("Tool does not support Skill uninstall: {}", tool_id))?;
     let target_path = resolved_skill_path_in_root(&tool_skills_dir, &skill_name);
+    if !path_is_literal_child_of_root(&target_path, &tool_skills_dir) {
+        return Err("Skill uninstall target must stay inside the tool Skill directory".to_string());
+    }
 
     let target_is_symlink = fs::symlink_metadata(&target_path)
         .map(|meta| meta.file_type().is_symlink())
@@ -1904,12 +2090,20 @@ pub(crate) fn uninstall_skill_v2_domain(
             &subject,
             "target tool has a real Skill file; use delete".to_string(),
         );
+    } else if detected_tool_can_read_shared_skills(&tool) {
+        return preview_reject_or_error(
+            dry_run,
+            ACTION_UNINSTALL,
+            &skill_name,
+            &subject,
+            "direct_shared_reader_without_tool_link".to_string(),
+        );
     } else {
         preview.message = Some("目标工具未安装该 skill".to_string());
     }
 
     if !dry_run && target_is_symlink {
-        remove_skill_path(&target_path)?;
+        remove_skill_symlink(&target_path)?;
         preview.successes.push(OperationReceiptItem {
             tool_id: Some(tool_id),
             path: target_path.to_string_lossy().to_string(),

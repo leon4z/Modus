@@ -167,7 +167,8 @@
     return Boolean(normalized)
       && normalized !== "notInstalled"
       && normalized !== "variantNotInstalled"
-      && normalized !== "noVariant";
+      && normalized !== "noVariant"
+      && normalized !== "brokenSymlink";
   }
 
   /** @param {string | null | undefined} status */
@@ -313,22 +314,34 @@
   /** @param {any} change */
   function isExecutableStructuredChange(change) {
     const kind = change?.changeKind || change?.change_kind || change?.action;
-    return kind === "create" || kind === "delete" || kind === "overwrite";
+    const path = change?.path;
+    return (kind === "create" || kind === "delete" || kind === "overwrite")
+      && typeof path === "string"
+      && path.trim().length > 0;
+  }
+
+  /** @param {any[]} paths */
+  function hasExecutablePath(paths) {
+    return Array.isArray(paths)
+      && paths.some((path) => typeof path === "string" && path.trim().length > 0);
   }
 
   /** @param {any} preview */
   function previewHasExecutableChanges(preview) {
     const normalized = parseOperationPreview(preview);
-    const hasStructuredExecutableChanges = normalized.changes.some(isExecutableStructuredChange);
-    const hasExplicitChanges = normalized.creates.length > 0
-      || normalized.deletes.length > 0
-      || normalized.overwrites.length > 0
+    const hasBlockedItems = (Array.isArray(normalized.blocked) && normalized.blocked.length > 0)
+      || (Array.isArray(normalized.blockedItems) && normalized.blockedItems.length > 0)
+      || (Array.isArray(normalized.blockers) && normalized.blockers.length > 0);
+    if (hasBlockedItems) return false;
+    const hasStructuredExecutableChanges = Array.isArray(normalized.changes)
+      && normalized.changes.some(isExecutableStructuredChange);
+    const hasExplicitChanges = hasExecutablePath(normalized.creates)
+      || hasExecutablePath(normalized.deletes)
+      || hasExecutablePath(normalized.overwrites)
       || hasStructuredExecutableChanges;
     if (hasExplicitChanges) return true;
-    if (normalized.preserves.length > 0) return false;
-    if (normalized.blocked.length > 0 || normalized.blockedItems.length > 0) return false;
-    if (typeof normalized.message === "string" && normalized.message.includes("无需")) return false;
-    return true;
+    if (Array.isArray(normalized.preserves) && normalized.preserves.length > 0) return false;
+    return false;
   }
 
   /**
@@ -523,9 +536,16 @@
     const pathOrigin = ts.path_origin || ts.pathOrigin || primarySource?.pathOrigin || "tool";
     const targetPath = ts.symlink_target || ts.symlinkTarget || ts.target_path || ts.targetPath || primarySource?.target_path || null;
     const hasPath = (typeof ts.path === "string" && ts.path.length > 0) || Boolean(primarySource?.path);
-    const installed = isSkillStatusInstalledLike(ts.status) && (normalized !== "noVariant" || hasPath);
+    const hasUsableSource = sources.some((source) =>
+      isSkillStatusInstalledLike(source?.status)
+        && typeof contentPathForSource(source) === "string"
+        && contentPathForSource(source).length > 0
+    );
+    const installed = (isSkillStatusInstalledLike(ts.status) && (normalized !== "noVariant" || hasPath))
+      || hasUsableSource;
+    const cleanupRequired = normalized === "brokenSymlink";
     const actionState = getSkillActionStateForTool(toolId);
-    const mode = installed
+    const mode = installed || cleanupRequired
       ? (targetPath || normalized.includes("Symlink") ? "symlink" : statusToMode(normalized) || "copy")
       : null;
     return {
@@ -541,6 +561,7 @@
       contentHash: ts.content_hash || ts.contentHash || "",
       sources,
       abnormalState: ts.abnormal_state || ts.abnormalState || (sources.length > 1 ? "duplicate_sources" : null),
+      cleanupRequired,
       skills_dir: tool?.skills_dir || tool?.skillsDir || "",
       canWriteSkill: canManageSkillForTool(toolId),
       ...actionState,
@@ -550,6 +571,7 @@
   /** @param {any} status @param {string} sharedInstallPath @param {boolean} hasCopyAction */
   function getInstallUnavailableReason(status, sharedInstallPath, hasCopyAction = false) {
     if (!status || status.status === "installed") return "";
+    if (status.cleanupRequired || status.rawStatus === "brokenSymlink") return "";
     if (!hasContentSources) return $t("skills.viewer.install_unavailable_no_source");
     if (hasCopyAction) return "";
     if (!sharedInstallPath) return $t("skills.viewer.install_unavailable_no_shared_source");
@@ -635,9 +657,7 @@
         const normalized = normalizeSkillStatus(source?.status);
         const path = contentPathForSource(source);
         const pathOrigin = contentPathOriginForSource(source);
-        const installed = normalized !== "notInstalled"
-          && normalized !== "variantNotInstalled"
-          && normalized !== "noVariant"
+        const installed = isSkillStatusInstalledLike(normalized)
           && typeof path === "string"
           && path.length > 0;
         if (!installed) continue;
@@ -661,9 +681,16 @@
 
     // Once a refreshed inventory exists, do not resurrect a removed source from
     // the dialog's previous active path.
-    const fallbackPath = requireInventoryBackedContentSources
+    const rawFallbackPath = skillEntry?.path || "";
+    const fallbackIsBroken = statuses.some((status) =>
+      normalizeSkillStatus(status?.status) === "brokenSymlink"
+      && normalizeSourceEntries(status).some((source) =>
+        source?.path === rawFallbackPath || source?.target_path === rawFallbackPath
+      )
+    );
+    const fallbackPath = requireInventoryBackedContentSources || fallbackIsBroken
       ? ""
-      : canonicalContentPathForSkillPath(skillEntry?.path || "", statuses);
+      : canonicalContentPathForSkillPath(rawFallbackPath, statuses);
     if (fallbackPath && !sources.some((source) => source.path === fallbackPath)) {
       sources.push({
         key: sourceKey({ path: fallbackPath, pathOrigin: "generic", tool_id: "generic" }),
@@ -939,7 +966,7 @@
     const isNewSkillIdentity = currentSkillIdentity !== lastSkillIdentity;
     const isNewSkillName = currentSkillName !== lastSkillName;
     const initialVariant = resolveInitialVariant(s);
-    const initialPath = getVariantPath(initialVariant) || s.path || "";
+    const initialPath = getVariantPath(initialVariant);
     lastSkillIdentity = currentSkillIdentity;
     lastSkillName = currentSkillName;
     selectedVariant = initialVariant;
@@ -1612,18 +1639,33 @@
       if (!tool?.skills_dir) return;
       const sourceContext = resolveInstallSourceContext();
       if (!sourceContext) return;
-      const preview = await previewInstallForContext(toolId, sourceContext).catch(() => null);
-      if (preview) {
-        const normalized = withInstallSourceMessage(preview, sourceContext);
-        const confirmed = await confirmOperation(
-          sourceContext.action === "copy_tool"
-            ? $t("skills.viewer.copy_from_other_dialog_title")
-            : $t("skills.viewer.install_dialog_title"),
-          normalized,
-          { confirmLabel: $t("skills.viewer.confirm_execute") }
-        );
-        if (!confirmed || !previewHasExecutableChanges(normalized)) return;
+      let preview;
+      try {
+        preview = await previewInstallForContext(toolId, sourceContext);
+      } catch (_) {
+        installMsg = $t("skills.viewer.preview_failed");
+        installMsgType = "err";
+        return;
       }
+      if (!preview) {
+        installMsg = $t("skills.viewer.preview_failed");
+        installMsgType = "err";
+        return;
+      }
+      const normalized = withInstallSourceMessage(preview, sourceContext);
+      if (!previewHasExecutableChanges(normalized)) {
+        installMsg = $t("skills.viewer.preview_failed");
+        installMsgType = "err";
+        return;
+      }
+      const confirmed = await confirmOperation(
+        sourceContext.action === "copy_tool"
+          ? $t("skills.viewer.copy_from_other_dialog_title")
+          : $t("skills.viewer.install_dialog_title"),
+        normalized,
+        { confirmLabel: $t("skills.viewer.confirm_execute") }
+      );
+      if (!confirmed) return;
       await executeInstallForContext(toolId, sourceContext);
       await refreshDetailAfterSourceWrite(null);
       installMsg = $t("skills.viewer.install_ok_with_source", {
@@ -1657,25 +1699,26 @@
     const run = startSkillDetailOperationRun(isDeleteAction ? "delete-from-tool" : "uninstall-from-tool");
     const previewLabel = isDeleteAction ? "delete-preview" : "uninstall-preview";
     const executeLabel = isDeleteAction ? "delete-execute" : "uninstall-execute";
+    let previewCompleted = false;
     try {
       const preview = await trackModulePerformanceRequest(run, previewLabel, () => (
         isDeleteAction
           ? previewDeleteFromTool(skill.name, toolId, sourcePath)
           : previewUninstall(skill.name, toolId)
-      ).catch(() => null));
-      if (!preview) markModulePerformance(run, "preview-unavailable");
-      if (preview) {
-        const confirmed = await confirmOperation(
-          $t(isDeleteAction ? "skills.viewer.delete_from_tool_dialog_title" : "skills.viewer.uninstall_dialog_title"),
-          preview,
-          { variant: "danger" }
-        );
-        if (!confirmed || !previewHasExecutableChanges(preview)) {
-          cancelSkillDetailOperationRun(run);
-          return;
-        }
-        markModulePerformance(run, "confirmation-accepted");
+      ));
+      if (!preview) throw new Error("preview_unavailable");
+      if (!previewHasExecutableChanges(preview)) throw new Error("preview_unavailable");
+      previewCompleted = true;
+      const confirmed = await confirmOperation(
+        $t(isDeleteAction ? "skills.viewer.delete_from_tool_dialog_title" : "skills.viewer.uninstall_dialog_title"),
+        preview,
+        { variant: "danger" }
+      );
+      if (!confirmed) {
+        cancelSkillDetailOperationRun(run);
+        return;
       }
+      markModulePerformance(run, "confirmation-accepted");
       await trackModulePerformanceRequest(run, executeLabel, () => (
         isDeleteAction
           ? executeDeleteFromTool(skill.name, toolId, sourcePath)
@@ -1686,11 +1729,14 @@
       installMsg = $t(isDeleteAction ? "skills.viewer.delete_from_tool_ok" : "skills.viewer.uninstall_ok");
       installMsgType = "ok";
     } catch (e) {
+      if (!previewCompleted) markModulePerformance(run, "preview-failed");
       finishSkillDetailOperationRun(run, "failed", "operation-failed");
-      installMsg = $t(
-        isDeleteAction ? "skills.viewer.delete_from_tool_fail" : "skills.viewer.uninstall_fail",
-        { err: String(e) }
-      );
+      installMsg = !previewCompleted
+        ? $t("skills.viewer.preview_failed")
+        : $t(
+          isDeleteAction ? "skills.viewer.delete_from_tool_fail" : "skills.viewer.uninstall_fail",
+          { err: String(e) }
+        );
       installMsgType = "err";
     } finally {
       loadingInstall = false;
@@ -1712,13 +1758,16 @@
     }
     loadingInstall = true;
     installMsg = "";
+    let previewCompleted = false;
     try {
       const preview = await trackModulePerformanceRequest(run, "copy-preview", () =>
         previewCopySkillToTool(skill.name, targetToolId, sourcePath)
       );
+      if (!preview || !previewHasExecutableChanges(preview)) throw new Error("preview_unavailable");
+      previewCompleted = true;
       const title = $t("skills.viewer.btn_copy_from_tool", { tool: sourceToolName || "" });
       const confirmed = await confirmOperation(title, preview, { confirmLabel: $t("skills.viewer.confirm_execute") });
-      if (!confirmed || !previewHasExecutableChanges(preview)) {
+      if (!confirmed) {
         cancelSkillDetailOperationRun(run);
         return;
       }
@@ -1735,7 +1784,9 @@
       installMsgType = "ok";
     } catch (e) {
       finishSkillDetailOperationRun(run, "failed", "operation-failed");
-      installMsg = $t("skills.viewer.copy_from_tool_fail", { err: String(e) });
+      installMsg = previewCompleted
+        ? $t("skills.viewer.copy_from_tool_fail", { err: String(e) })
+        : $t("skills.viewer.preview_failed");
       installMsgType = "err";
     } finally {
       loadingInstall = false;
@@ -1778,21 +1829,26 @@
     if (!renamed) return;
     loadingInstall = true;
     installMsg = "";
+    let previewCompleted = false;
     try {
       const preview = await previewRenameSkillSource(skill.name, selectedDuplicateKeepPath, renamed);
+      if (!preview || !previewHasExecutableChanges(preview)) throw new Error("preview_unavailable");
+      previewCompleted = true;
       const confirmed = await confirmOperation(
         $t("skills.viewer.rename_local_source"),
         preview,
         { confirmLabel: $t("skills.viewer.confirm_execute") }
       );
-      if (!confirmed || !previewHasExecutableChanges(preview)) return;
+      if (!confirmed) return;
       await executeRenameSkillSource(skill.name, selectedDuplicateKeepPath, renamed);
       await refreshDetailAfterSourceWrite(null);
       closeDuplicateHandling();
       installMsg = $t("skills.viewer.rename_source_ok", { name: renamed });
       installMsgType = "ok";
     } catch (e) {
-      installMsg = $t("skills.viewer.rename_source_fail", { err: String(e) });
+      installMsg = previewCompleted
+        ? $t("skills.viewer.rename_source_fail", { err: String(e) })
+        : $t("skills.viewer.preview_failed");
       installMsgType = "err";
     } finally {
       loadingInstall = false;
@@ -1849,21 +1905,26 @@
     if (deletePaths.length === 0) return;
     loadingInstall = true;
     installMsg = "";
+    let previewCompleted = false;
     try {
       const preview = await previewCleanupDuplicateSkillSources(skill.name, selectedDuplicateKeepPath, deletePaths);
+      if (!preview || !previewHasExecutableChanges(preview)) throw new Error("preview_unavailable");
+      previewCompleted = true;
       const confirmed = await confirmOperation(
         $t("skills.viewer.abnormal_keep_confirm_title"),
         preview,
         { variant: "danger", confirmLabel: $t("skills.viewer.confirm_execute") }
       );
-      if (!confirmed || !previewHasExecutableChanges(preview)) return;
+      if (!confirmed) return;
       await executeCleanupDuplicateSkillSources(skill.name, selectedDuplicateKeepPath, deletePaths);
       await refreshDetailAfterSourceWrite(null);
       closeDuplicateHandling();
       installMsg = $t("skills.viewer.abnormal_keep_ok");
       installMsgType = "ok";
     } catch (e) {
-      installMsg = $t("skills.viewer.abnormal_keep_fail", { err: String(e) });
+      installMsg = previewCompleted
+        ? $t("skills.viewer.abnormal_keep_fail", { err: String(e) })
+        : $t("skills.viewer.preview_failed");
       installMsgType = "err";
     } finally {
       loadingInstall = false;
@@ -1900,10 +1961,14 @@
   async function handleDeleteSkill() {
     if (!skill) return;
     deletingSkill = true;
+    let previewCompleted = false;
     try {
       const preview = await previewDelete(skill.name, true);
+      if (!preview) throw new Error("preview_unavailable");
+      if (!previewHasExecutableChanges(preview)) throw new Error("preview_unavailable");
+      previewCompleted = true;
       const confirmed = await confirmOperation(`${$t("skills.delete.btn")}: ${skill.name}`, preview, { variant: "danger" });
-      if (!confirmed || !previewHasExecutableChanges(preview)) return;
+      if (!confirmed) return;
       const result = await executeDelete(skill.name, true);
       invalidateSkillInventory();
       onDelete(
@@ -1912,7 +1977,9 @@
       );
       onClose();
     } catch (e) {
-      installMsg = $t("skills.delete.failed", { err: String(e) });
+      installMsg = previewCompleted
+        ? $t("skills.delete.failed", { err: String(e) })
+        : $t("skills.viewer.preview_failed");
       installMsgType = "err";
       setTimeout(() => { installMsg = ""; }, 8000);
     } finally {
@@ -2030,6 +2097,7 @@
                   {@const copyCandidates = copyCandidatesForTool(ts.tool_id)}
                   {@const sharedInstallPath = getSharedInstallSourcePath()}
                   {@const duplicateStatus = hasDuplicateSources(ts)}
+                  {@const brokenLinkStatus = ts.cleanupRequired || ts.rawStatus === "brokenSymlink"}
                   {@const displayedSources = displaySourcesForStatus(ts)}
                   {@const hasCopyAction = canCopyToolSkill && copyCandidates.length > 0}
                   {@const installUnavailableReason = getInstallUnavailableReason(ts, sharedInstallPath, hasCopyAction)}
@@ -2045,6 +2113,13 @@
                             </button>
                           </Tooltip>
                         {/if}
+                        {#if brokenLinkStatus}
+                          <Tooltip label={$t("skills.viewer.alert_broken_link")} placement="left" maxWidth="280px">
+                            <button type="button" class="tool-status-warning-marker" aria-label={$t("skills.viewer.alert_broken_link")}>
+                              <AlertCircle size={14} strokeWidth={1.9} />
+                            </button>
+                          </Tooltip>
+                        {/if}
                         {#if installUnavailableReason}
                           <Tooltip label={installUnavailableReason} placement="left" maxWidth="280px">
                             <button type="button" class="tool-status-warning-marker" aria-label={installUnavailableReason}>
@@ -2054,7 +2129,11 @@
                         {/if}
                       </div>
                       <div class="tool-status-right">
-                        {#if ts.status === "installed"}
+                        {#if brokenLinkStatus}
+                          {#if canUninstallToolSkill}
+                            <button class="btn-action-install" onclick={() => handleUninstall(ts.tool_id, "uninstall")} disabled={loadingInstall}>{$t("skills.viewer.uninstall")}</button>
+                          {/if}
+                        {:else if ts.status === "installed"}
                           {#if duplicateStatus}
                             <button class="btn-action-install" onclick={() => openDuplicateHandling(ts)} disabled={loadingInstall || !canHandleDuplicateStatus(ts)}>{$t("skills.viewer.abnormal_action")}</button>
                           {:else if canUninstallToolSkill && isToolDirectorySymlink(ts)}
@@ -2074,6 +2153,9 @@
                     </div>
                     {#if ts.rawStatus === "variantDrifted"}
                       <div class="tool-status-warning">{$t("skills.viewer.alert_metadata_drift")}</div>
+                    {/if}
+                    {#if brokenLinkStatus}
+                      <div class="tool-status-warning">{$t("skills.viewer.alert_broken_link")}</div>
                     {/if}
                     {#if displayedSources.length > 0}
                       <div class="tool-status-path-list">

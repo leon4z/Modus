@@ -426,6 +426,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let base_dir = tmp.path().join("tool-a");
         let target_path = base_dir.join("RULES.md");
+        std::fs::create_dir_all(&base_dir).unwrap();
         let registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(DevToolAdapter::new(
             "tool-a", "Tool A", "T", base_dir, false,
         ))]);
@@ -467,33 +468,34 @@ mod tests {
     #[test]
     fn inject_default_rules_creates_missing_certified_default_target_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let target_path = tmp.path().join(".hermes").join("SOUL.md");
-        let registry =
-            ToolRegistry::from_adapters_for_tests(vec![crate::adapters::hermes_agent::create(
-                tmp.path(),
-            )]);
+        let base_dir = tmp.path().join("tool-a");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        let target_path = base_dir.join("RULES.md");
+        let registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(DevToolAdapter::new(
+            "tool-a", "Tool A", "T", base_dir, false,
+        ))]);
         let mut config = app_config::AppConfig::default();
         config.injection_targets.clear();
         config.default_rules = vec![app_config::DefaultRule {
             id: "common_rule".to_string(),
             name: "Global Rules".to_string(),
-            content: "hermes managed instruction".to_string(),
+            content: "managed instruction".to_string(),
             inject_to: vec![],
-            managed_targets: Some(vec!["hermes-agent".to_string()]),
+            managed_targets: Some(vec!["tool-a".to_string()]),
         }];
 
         let result = inject_default_rules_for_tools_with_config(
             &registry,
             &config,
-            "hermes-agent".to_string(),
-            vec!["hermes-agent".to_string()],
+            "tool-a".to_string(),
+            vec!["tool-a".to_string()],
         )
         .unwrap();
 
         assert!(result.contains("Injected managed rules"));
         let content = std::fs::read_to_string(&target_path).unwrap();
         assert!(content.contains(MARKER_START));
-        assert!(content.contains("hermes managed instruction"));
+        assert!(content.contains("managed instruction"));
         assert!(content.contains(MARKER_END));
     }
 

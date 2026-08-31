@@ -24,7 +24,6 @@ pub fn create(home: &Path) -> Box<dyn ToolAdapter> {
             capabilities(home),
         )
         .with_skills_dir(home.join(".hermes/skills"))
-        .with_detection_paths(&[PathBuf::from("/Applications/Hermes.app")])
         .with_detection_commands(&["hermes"]),
     )
 }
@@ -222,6 +221,16 @@ mod tests {
         project_capabilities, ToolCapabilityAction as ProjectedAction,
         ToolCapabilityExclusionReason, ToolCapabilityModule, ToolCapabilitySourceRole,
     };
+
+    #[test]
+    fn presence_does_not_accept_a_generic_application_path() {
+        let adapter = create(Path::new("/Users/example"));
+        let presence = adapter.presence();
+
+        assert!(!presence.app_detected);
+        assert_ne!(presence.label, "APP");
+        assert_ne!(presence.label, "APP+CLI");
+    }
 
     #[test]
     fn runtime_capabilities_are_adapter_owned_and_snapshot_free() {

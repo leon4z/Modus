@@ -35,6 +35,22 @@ pub(crate) fn remove_skill_path(path: &Path) -> Result<(), String> {
     }
 }
 
+/// Remove `path` only when the directory entry is still a symlink. The final
+/// mutation always uses `remove_file`, so a concurrently recreated directory
+/// is never removed recursively by an uninstall operation.
+pub(crate) fn remove_skill_symlink(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|e| format!("Failed to inspect Skill link {}: {}", path.display(), e))?;
+    if !metadata.file_type().is_symlink() {
+        return Err(format!(
+            "Refusing to uninstall non-symlink Skill path: {}",
+            path.display()
+        ));
+    }
+    std::fs::remove_file(path)
+        .map_err(|e| format!("Failed to delete Skill link {}: {}", path.display(), e))
+}
+
 /// Delete `path` only if it currently exists (as a regular entry or symlink).
 pub(crate) fn remove_if_exists(path: &Path) -> Result<(), String> {
     if path.exists() || path.is_symlink() {
@@ -70,5 +86,48 @@ pub(crate) fn collect_files_recursive(root: &Path, dir: &Path, entries: &mut Vec
         if is_dir {
             collect_files_recursive(root, &path, entries);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remove_skill_symlink_refuses_regular_file_and_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("skill-file");
+        let directory = tmp.path().join("skill-directory");
+        std::fs::write(&file, "guard").unwrap();
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("SKILL.md"), "# guard").unwrap();
+
+        assert!(remove_skill_symlink(&file).is_err());
+        assert!(remove_skill_symlink(&directory).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "guard");
+        assert_eq!(
+            std::fs::read_to_string(directory.join("SKILL.md")).unwrap(),
+            "# guard"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_skill_symlink_removes_only_the_link() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("source");
+        let link = tmp.path().join("link");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "# source").unwrap();
+        std::os::unix::fs::symlink(&source, &link).unwrap();
+
+        remove_skill_symlink(&link).unwrap();
+
+        assert!(!link.exists());
+        assert!(!link.is_symlink());
+        assert_eq!(
+            std::fs::read_to_string(source.join("SKILL.md")).unwrap(),
+            "# source"
+        );
     }
 }

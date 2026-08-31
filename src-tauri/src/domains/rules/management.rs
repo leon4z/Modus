@@ -38,45 +38,7 @@ pub(crate) fn all_rule_tool_ids(
     registry: &ToolRegistry,
     config: &app_config::AppConfig,
 ) -> Vec<String> {
-    let registry_ids = registry.tool_ids();
-    if config.initialized {
-        return unique_sorted(
-            config
-                .managed_tools
-                .iter()
-                .map(|id| canonical_tool_id(id, &registry_ids))
-                .collect::<Vec<_>>(),
-        );
-    }
-
-    let mut ids: BTreeSet<String> = registry.tool_ids().into_iter().collect();
-    ids.extend(
-        config
-            .tool_capability_overrides
-            .keys()
-            .map(|id| canonical_tool_id(id, &registry_ids)),
-    );
-    ids.extend(
-        config
-            .managed_tools
-            .iter()
-            .map(|id| canonical_tool_id(id, &registry_ids)),
-    );
-    for rule in &config.default_rules {
-        ids.extend(
-            rule.inject_to
-                .iter()
-                .map(|id| canonical_tool_id(id, &registry_ids)),
-        );
-        if let Some(targets) = &rule.managed_targets {
-            ids.extend(
-                targets
-                    .iter()
-                    .map(|id| canonical_tool_id(id, &registry_ids)),
-            );
-        }
-    }
-    ids.into_iter().collect()
+    crate::domains::tools::active_managed_tool_ids_for_config(registry, config)
 }
 
 fn canonical_active_rule_tool_id(
@@ -498,11 +460,12 @@ pub(crate) fn get_managed_rules_state_for_config(
 
     for rule in &community_rules {
         let managed_tool_ids = managed_rule_tool_ids(rule, &all_tool_ids);
-        let source_pending = source_pending_for_rule(
-            rule,
-            &config.default_rule_injection_baselines,
-            &all_tool_ids,
-        );
+        let source_pending = !managed_tool_ids.is_empty()
+            && source_pending_for_rule(
+                rule,
+                &config.default_rule_injection_baselines,
+                &all_tool_ids,
+            );
         if source_pending {
             for tool_id in &managed_tool_ids {
                 target_source_pending.insert(tool_id.clone(), true);
@@ -1055,6 +1018,7 @@ mod tests {
         format: ToolCapabilityFormat,
         source_confidence: ToolCapabilitySourceConfidence,
         source_path: String,
+        detected: bool,
     }
 
     impl RuleStateTestAdapter {
@@ -1067,6 +1031,7 @@ mod tests {
                 format: ToolCapabilityFormat::Markdown,
                 source_confidence: ToolCapabilitySourceConfidence::OfficialDocs,
                 source_path,
+                detected: true,
             }
         }
 
@@ -1082,6 +1047,11 @@ mod tests {
 
         fn with_confidence(mut self, confidence: ToolCapabilitySourceConfidence) -> Self {
             self.source_confidence = confidence;
+            self
+        }
+
+        fn with_detected(mut self, detected: bool) -> Self {
+            self.detected = detected;
             self
         }
     }
@@ -1100,7 +1070,7 @@ mod tests {
             PathBuf::new()
         }
         fn detect(&self) -> bool {
-            true
+            self.detected
         }
         fn read_rules(&self) -> Result<Vec<RuleSource>, String> {
             Ok(vec![RuleSource {
@@ -1421,6 +1391,96 @@ mod tests {
     }
 
     #[test]
+    fn scan_ignores_absent_historical_managed_tool_and_restores_it_after_reinstall() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target_path = tmp.path().join("absent-parent").join("SOUL.md");
+        let rule = default_rule(Some(vec!["tool-a".to_string()]), "managed");
+        let absent_registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(
+            RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                target_path.to_string_lossy().to_string(),
+            )
+            .with_detected(false),
+        )]);
+        let mut config = app_config::default_config();
+        config.initialized = true;
+        config.managed_tools = vec!["tool-a".to_string()];
+        config.default_rules = vec![rule];
+        config.default_rule_injection_baselines.common_rule = "outdated".to_string();
+
+        let absent_state = get_managed_rules_state_for_config(&absent_registry, &config);
+
+        assert!(absent_state.rule_sets[0].managed_tool_ids.is_empty());
+        assert!(!absent_state.rule_sets[0].source_pending);
+        assert!(absent_state.targets.is_empty());
+        assert!(absent_state.summary.affected_tool_ids.is_empty());
+        assert_eq!(absent_state.summary.pending_source_rule_sets, 0);
+        assert_eq!(config.managed_tools, vec!["tool-a".to_string()]);
+
+        let present_registry =
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                target_path.to_string_lossy().to_string(),
+            ))]);
+        let restored_state = get_managed_rules_state_for_config(&present_registry, &config);
+
+        assert_eq!(
+            restored_state.rule_sets[0].managed_tool_ids,
+            vec!["tool-a".to_string()]
+        );
+        assert!(restored_state.rule_sets[0].source_pending);
+        assert_eq!(restored_state.targets.len(), 1);
+        assert_eq!(restored_state.summary.pending_source_rule_sets, 1);
+        assert_eq!(
+            restored_state.summary.affected_tool_ids,
+            vec!["tool-a".to_string()]
+        );
+    }
+
+    #[test]
+    fn direct_injection_rejects_absent_historical_tool_without_creating_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("absent-parent");
+        let target_path = parent.join("SOUL.md");
+        let present_registry =
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                target_path.to_string_lossy().to_string(),
+            ))]);
+        let absent_registry = ToolRegistry::from_adapters_for_tests(vec![Box::new(
+            RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                target_path.to_string_lossy().to_string(),
+            )
+            .with_detected(false),
+        )]);
+        let mut config = app_config::default_config();
+        config.initialized = true;
+        config.managed_tools = vec!["tool-a".to_string()];
+        config.default_rules = vec![default_rule(Some(vec!["tool-a".to_string()]), "managed")];
+
+        let preview_state = get_managed_rules_state_for_config(&present_registry, &config);
+        assert_eq!(preview_state.targets.len(), 1);
+
+        assert!(canonical_active_rule_tool_id(&absent_registry, &config, "tool-a").is_err());
+        assert!(validate_writable_target(&absent_registry, &config, "tool-a").is_err());
+        let result = inject_default_rules_for_tools_with_config(
+            &absent_registry,
+            &config,
+            "tool-a".to_string(),
+            vec!["tool-a".to_string()],
+        );
+
+        assert!(result.unwrap_err().contains("not enabled"));
+        assert!(!parent.exists());
+        assert!(!target_path.exists());
+    }
+
+    #[test]
     fn managed_block_parser_rejects_duplicate_or_incomplete_markers() {
         assert_eq!(extract_managed_block("plain"), ManagedBlockParse::Missing);
         assert!(matches!(
@@ -1700,6 +1760,7 @@ mod tests {
                 target_path.to_string_lossy().to_string(),
             ))]);
         let mut config = app_config::default_config();
+        config.initialized = true;
         config.default_rules = vec![rule];
         config.managed_tools = vec!["claude_code".to_string()];
         config.tool_capability_overrides.insert(
@@ -1715,6 +1776,7 @@ mod tests {
 
         let state = get_managed_rules_state_for_config(&registry, &config);
 
+        assert_eq!(state.rule_sets[0].managed_tool_ids, vec!["claude-code"]);
         assert_eq!(state.targets.len(), 1);
         assert_eq!(state.targets[0].tool_id, "claude-code");
         assert_eq!(
@@ -1847,23 +1909,25 @@ mod tests {
     }
 
     #[test]
-    fn hermes_certified_default_is_createable_without_persisted_injection_target() {
+    fn certified_default_is_createable_without_persisted_injection_target() {
         let tmp = tempfile::tempdir().unwrap();
-        let target_path = tmp.path().join(".hermes").join("SOUL.md");
-        let rule = default_rule(Some(vec!["hermes-agent".to_string()]), "managed");
+        let target_path = tmp.path().join("tool-a").join("RULES.md");
+        let rule = default_rule(Some(vec!["tool-a".to_string()]), "managed");
         let registry =
-            ToolRegistry::from_adapters_for_tests(vec![crate::adapters::hermes_agent::create(
-                tmp.path(),
-            )]);
+            ToolRegistry::from_adapters_for_tests(vec![Box::new(RuleStateTestAdapter::new(
+                "tool-a",
+                ToolCapabilityAccess::Writable,
+                target_path.to_string_lossy().to_string(),
+            ))]);
         let mut config = app_config::default_config();
         config.default_rules = vec![rule];
-        config.managed_tools = vec!["hermes-agent".to_string()];
+        config.managed_tools = vec!["tool-a".to_string()];
         config.injection_targets.clear();
 
         let state = get_managed_rules_state_for_config(&registry, &config);
 
         assert_eq!(state.targets.len(), 1);
-        assert_eq!(state.targets[0].tool_id, "hermes-agent");
+        assert_eq!(state.targets[0].tool_id, "tool-a");
         let expected_path = target_path.to_string_lossy().to_string();
         assert_eq!(
             state.targets[0].target_path.as_deref(),

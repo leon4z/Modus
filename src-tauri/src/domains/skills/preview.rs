@@ -209,6 +209,12 @@ pub(crate) fn classify_reject_reason(raw: &str) -> Option<RejectReason> {
             "当前工具正在直接使用共享目录，请在共享入口或全局删除里处理",
             Some(raw.to_string()),
         )
+    } else if raw == "direct_shared_reader_without_tool_link" {
+        reject_reason(
+            REASON_POLICY_MISMATCH,
+            "该工具仅通过共享目录使用此 Skill，没有可卸载的工具目录链接",
+            Some(raw.to_string()),
+        )
     } else if raw == "目标工具未安装该 skill" || raw == "Target skill is not installed" {
         reject_reason(
             REASON_NOT_INSTALLED,

@@ -625,6 +625,54 @@ describe("SkillsModule local-source behavior", () => {
     })).toBeInTheDocument();
   });
 
+  it("keeps a broken tool link visible in the tool list with an abnormal warning", async () => {
+    inventoryMocks.getSkillInventory.mockResolvedValueOnce({
+      skills: [
+        {
+          name: "broken-skill",
+          display_name: "Broken Skill",
+          description: "",
+          path: "/tools/codex/skills/broken-skill",
+          tool_statuses: [
+            {
+              tool_id: "codex",
+              tool_name: "Codex",
+              status: "broken_symlink",
+              path: "/tools/codex/skills/broken-skill",
+              path_origin: "tool",
+              symlink_target: "/shared/missing-broken-skill",
+            },
+          ],
+        },
+      ],
+    });
+    skillApiMocks.listSkills.mockResolvedValue([
+      {
+        name: "broken-skill",
+        display_name: "broken-skill",
+        description: "",
+        path: "/tools/codex/skills/broken-skill",
+        tool_id: "codex",
+        broken_symlink: true,
+      },
+    ]);
+
+    render(SkillsModule);
+    expect(await screen.findByRole("button", { name: /Broken Skill|broken-skill/i })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Shared" }));
+    expect(screen.queryByRole("button", { name: /Broken Skill|broken-skill/i })).not.toBeInTheDocument();
+    expect(screen.getByText("No shared Skills")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+
+    expect(await screen.findByRole("button", { name: /Broken Skill|broken-skill/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "This tool's symlink for this skill is broken. Click for details.",
+    })).toBeInTheDocument();
+    expect(screen.queryByText("Shared Directory")).not.toBeInTheDocument();
+  });
+
   it("collapses duplicate tool entries and surfaces same-name source warnings", async () => {
     inventoryMocks.getSkillInventory.mockResolvedValueOnce({
       skills: [

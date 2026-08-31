@@ -1280,6 +1280,7 @@ describe("SkillViewer local-source behavior", () => {
       ],
     });
     apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewInstall.mockResolvedValue({ creates: ["/tmp/cursor-skills/demo-skill"] });
 
     render(SkillViewer, {
       skill,
@@ -1931,6 +1932,7 @@ describe("SkillViewer local-source behavior", () => {
       ],
     });
     apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewUninstall.mockResolvedValue({ deletes: ["/tmp/codex-skills/demo-skill"] });
 
     render(SkillViewer, {
       skill,
@@ -1957,6 +1959,347 @@ describe("SkillViewer local-source behavior", () => {
       expect(apiMocks.executeUninstall).toHaveBeenCalledWith("demo-skill", "codex");
     });
     expect(apiMocks.previewCopySkillToTool).not.toHaveBeenCalled();
+  });
+
+  it("presents a broken tool link as unavailable cleanup state", async () => {
+    const user = userEvent.setup();
+    const codebuddy = {
+      id: "codebuddy",
+      name: "CodeBuddy",
+      detected: true,
+      skills_dir: "/tmp/codebuddy-skills",
+    };
+    setToolsForTest([{
+      ...codebuddy,
+      capabilities: [skillCapabilityWithActions(codebuddy, ["view", "uninstall"])],
+    }]);
+    const skill = createSkill({
+      path: "/tmp/codebuddy-skills/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codebuddy",
+          tool_name: "CodeBuddy",
+          status: "brokenSymlink",
+          path: "/tmp/codebuddy-skills/demo-skill",
+          path_origin: "tool",
+          symlink_target: "/shared/missing-demo-skill",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+
+    render(SkillViewer, {
+      skill,
+      initialTab: "install",
+      onClose: vi.fn(),
+      onDelete: vi.fn(),
+      onChanged: vi.fn(),
+    });
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+
+    expect(await screen.findByText("可用 0/1")).toBeInTheDocument();
+    expect(screen.getAllByText("工具目录链接已失效，此 Skill 当前不可用；可卸载该断链完成清理。").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "卸载" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "安装" })).not.toBeInTheDocument();
+    expect(apiMocks.listSkillFiles).not.toHaveBeenCalledWith("/tmp/codebuddy-skills/demo-skill");
+    expect(apiMocks.readSkillContent).not.toHaveBeenCalledWith("/tmp/codebuddy-skills/demo-skill");
+  });
+
+  it("keeps direct shared availability distinct from a broken tool link", async () => {
+    const user = userEvent.setup();
+    const codebuddy = {
+      id: "codebuddy",
+      name: "CodeBuddy",
+      detected: true,
+      skills_dir: "/tmp/codebuddy-skills",
+    };
+    setToolsForTest([{
+      ...codebuddy,
+      capabilities: [skillCapabilityWithActions(codebuddy, ["view", "uninstall"])],
+    }]);
+    const skill = createSkill({
+      path: "/shared/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codebuddy",
+          tool_name: "CodeBuddy",
+          status: "brokenSymlink",
+          path: "/tmp/codebuddy-skills/demo-skill",
+          path_origin: "tool",
+          symlink_target: "/shared/missing-demo-skill",
+          sources: [
+            {
+              tool_id: "codebuddy",
+              tool_name: "CodeBuddy",
+              status: "brokenSymlink",
+              path: "/tmp/codebuddy-skills/demo-skill",
+              path_origin: "tool",
+              symlink_target: "/shared/missing-demo-skill",
+            },
+            {
+              tool_id: "codebuddy",
+              tool_name: "CodeBuddy",
+              status: "variantInstalledCopy",
+              path: "/shared/demo-skill",
+              path_origin: "generic",
+            },
+          ],
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+
+    render(SkillViewer, { skill, initialTab: "content", onChanged: vi.fn() });
+
+    await waitFor(() => {
+      expect(apiMocks.listSkillFiles).toHaveBeenCalledWith("/shared/demo-skill");
+    });
+    expect(screen.getByText("可用 1/1")).toBeInTheDocument();
+    expect(apiMocks.listSkillFiles).not.toHaveBeenCalledWith("/tmp/codebuddy-skills/demo-skill");
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    expect(await screen.findByRole("button", { name: "卸载" })).toBeInTheDocument();
+  });
+
+  it("stops install execution when preview fails", async () => {
+    const user = userEvent.setup();
+    const skill = createSkill({
+      path: "/shared/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codex",
+          tool_name: "Codex",
+          status: "variantInstalledCopy",
+          path: "/tmp/codex-skills/demo-skill",
+          path_origin: "tool",
+        },
+        {
+          tool_id: "cursor",
+          tool_name: "Cursor",
+          status: "notInstalled",
+          path: "",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewInstall.mockRejectedValue(new Error("internal preview policy"));
+
+    render(SkillViewer, { skill, initialTab: "install", onChanged: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(await screen.findByRole("button", { name: "安装" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(apiMocks.executeInstall).not.toHaveBeenCalled();
+    expect(screen.queryByText("internal preview policy")).not.toBeInTheDocument();
+  });
+
+  it("stops install before confirmation when preview has no path changes", async () => {
+    const user = userEvent.setup();
+    const skill = createSkill({
+      path: "/shared/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codex",
+          tool_name: "Codex",
+          status: "variantInstalledCopy",
+          path: "/tmp/codex-skills/demo-skill",
+          path_origin: "tool",
+        },
+        {
+          tool_id: "cursor",
+          tool_name: "Cursor",
+          status: "notInstalled",
+          path: "",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewInstall.mockResolvedValue({});
+
+    render(SkillViewer, { skill, initialTab: "install", onChanged: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(await screen.findByRole("button", { name: "安装" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行" })).not.toBeInTheDocument();
+    expect(apiMocks.executeInstall).not.toHaveBeenCalled();
+  });
+
+  it("stops uninstall execution when preview fails", async () => {
+    const user = userEvent.setup();
+    const skill = createSkill({
+      path: "/shared/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codex",
+          tool_name: "Codex",
+          status: "variantInstalledSymlink",
+          path: "/tmp/codex-skills/demo-skill",
+          path_origin: "tool",
+          symlink_target: "/shared/demo-skill",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewUninstall.mockRejectedValue(new Error("internal uninstall policy"));
+
+    render(SkillViewer, { skill, initialTab: "install", onChanged: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(await screen.findByRole("button", { name: "卸载" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(apiMocks.executeUninstall).not.toHaveBeenCalled();
+    expect(screen.queryByText("internal uninstall policy")).not.toBeInTheDocument();
+  });
+
+  it("stops uninstall before confirmation when preview change has no path", async () => {
+    const user = userEvent.setup();
+    const skill = createSkill({
+      path: "/shared/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codex",
+          tool_name: "Codex",
+          status: "variantInstalledSymlink",
+          path: "/tmp/codex-skills/demo-skill",
+          path_origin: "tool",
+          symlink_target: "/shared/demo-skill",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewUninstall.mockResolvedValue({
+      changes: [{ changeKind: "delete", path: "" }],
+    });
+
+    render(SkillViewer, { skill, initialTab: "install", onChanged: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(await screen.findByRole("button", { name: "卸载" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行" })).not.toBeInTheDocument();
+    expect(apiMocks.executeUninstall).not.toHaveBeenCalled();
+  });
+
+  it("stops tool-source delete execution when preview fails", async () => {
+    const user = userEvent.setup();
+    const skill = createSkill({
+      path: "/tmp/codex-skills/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codex",
+          tool_name: "Codex",
+          status: "variantInstalledCopy",
+          path: "/tmp/codex-skills/demo-skill",
+          path_origin: "tool",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewDeleteFromTool.mockRejectedValue(new Error("internal delete policy"));
+
+    render(SkillViewer, { skill, initialTab: "install", onChanged: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(await screen.findByRole("button", { name: "删除" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(apiMocks.executeDeleteFromTool).not.toHaveBeenCalled();
+    expect(screen.queryByText("internal delete policy")).not.toBeInTheDocument();
+  });
+
+  it("stops tool-source delete before confirmation for an unknown preview shape", async () => {
+    const user = userEvent.setup();
+    const skill = createSkill({
+      path: "/tmp/codex-skills/demo-skill",
+      tool_statuses: [
+        {
+          tool_id: "codex",
+          tool_name: "Codex",
+          status: "variantInstalledCopy",
+          path: "/tmp/codex-skills/demo-skill",
+          path_origin: "tool",
+        },
+      ],
+    });
+    apiMocks.scanSkillInventory.mockResolvedValue({ skills: [skill] });
+    apiMocks.previewDeleteFromTool.mockResolvedValue({ outcome: "ok" });
+
+    render(SkillViewer, { skill, initialTab: "install", onChanged: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(await screen.findByRole("button", { name: "删除" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行" })).not.toBeInTheDocument();
+    expect(apiMocks.executeDeleteFromTool).not.toHaveBeenCalled();
+  });
+
+  it("stops Skill-level delete execution when preview fails", async () => {
+    const user = userEvent.setup();
+    apiMocks.previewDelete.mockRejectedValue(new Error("internal Skill delete policy"));
+
+    render(SkillViewer, {
+      skill: createSkill({ path: "/shared/demo-skill" }),
+      initialTab: "install",
+      onClose: vi.fn(),
+      onDelete: vi.fn(),
+      onChanged: vi.fn(),
+    });
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("button", { name: "删除 Skill" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(apiMocks.executeDelete).not.toHaveBeenCalled();
+    expect(screen.queryByText("internal Skill delete policy")).not.toBeInTheDocument();
+  });
+
+  it("stops Skill-level delete before confirmation when preview paths are empty", async () => {
+    const user = userEvent.setup();
+    apiMocks.previewDelete.mockResolvedValue({ deletes: [""] });
+
+    render(SkillViewer, {
+      skill: createSkill({ path: "/shared/demo-skill" }),
+      initialTab: "install",
+      onClose: vi.fn(),
+      onDelete: vi.fn(),
+      onChanged: vi.fn(),
+    });
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("button", { name: "删除 Skill" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行" })).not.toBeInTheDocument();
+    expect(apiMocks.executeDelete).not.toHaveBeenCalled();
+  });
+
+  it("stops Skill-level delete when preview contains paths and policy blockers", async () => {
+    const user = userEvent.setup();
+    apiMocks.previewDelete.mockResolvedValue({
+      deletes: ["/shared/demo-skill"],
+      blocked: [{
+        action: "delete_skill",
+        skillName: "demo-skill",
+        subject: "codex",
+        reason: { code: "policy_mismatch", message: "blocked" },
+      }],
+    });
+
+    render(SkillViewer, {
+      skill: createSkill({ path: "/shared/demo-skill" }),
+      initialTab: "install",
+      onClose: vi.fn(),
+      onDelete: vi.fn(),
+      onChanged: vi.fn(),
+    });
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("button", { name: "删除 Skill" }));
+
+    expect(await screen.findByText("无法生成操作预览，已停止执行且未修改文件。请刷新后重试。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行" })).not.toBeInTheDocument();
+    expect(apiMocks.executeDelete).not.toHaveBeenCalled();
   });
 
   it("keeps Skill-level delete behind preview confirmation", async () => {
