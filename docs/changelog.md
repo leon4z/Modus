@@ -4,6 +4,13 @@
 - Source-of-Truth: false
 - Type: note
 
+## 1.0.10 - 2026-08-31
+
+- Fixed broken Skill symlink handling so stale links remain visible for safe cleanup without being counted as installed or risking deletion of their targets.
+- Rejected invalid or stale Skill uninstall previews and constrained tool-local removal to the selected Skill directory.
+- Removed uninstalled tools from active Rules, Dashboard, and Skills state while preserving historical preferences for automatic recovery after reinstall.
+- Stopped treating a generic Hermes installer app path as proof that Hermes Agent is installed; current detection uses the verified CLI signal.
+
 ## 1.0.9 - 2026-06-11
 
 - Fixed Skill inventory refresh after changing managed tool access so disabled tools disappear from Skills immediately and newly enabled tools refresh again after settings are saved.
